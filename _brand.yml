@@ -1,0 +1,45 @@
+meta:
+  name:
+    full: City of Sacramento Approved Budget
+    short: Approved Budget
+  link:
+    home: https://www.cityofsacramento.gov/
+
+logo:
+  medium: www/assets/COStreatmentBLUE.png
+
+color:
+  palette:
+    city-cobalt: "#003c71"
+    city-sky: "#0072ce"
+    city-gold: "#c99a3b"
+    city-green: "#4a7c2a"
+    ink: "#0f172a"
+    muted: "#64748b"
+    alternate: "#f4f6fa"
+    panel: "#eaeff5"
+    border: "#e2e6ed"
+  primary: city-cobalt
+  secondary: city-sky
+  success: city-green
+  warning: city-gold
+  foreground: ink
+  background: "#ffffff"
+
+typography:
+  fonts:
+    - family: Josefin Sans
+      source: file
+      files:
+        - path: www/assets/fonts/JosefinSans-latin-400-700.woff2
+          weight: 400 700
+    - family: Inter
+      source: file
+      files:
+        - path: www/assets/fonts/Inter-latin-variable.woff2
+          weight: 100 900
+  base:
+    family: Inter
+  headings:
+    family: Josefin Sans
+    weight: 600

@@ -1,0 +1,20 @@
+services:
+  budget-shiny:
+    build:
+      context: .
+    ports:
+      - "8000:8000"
+    environment:
+      BUDGET_CACHE_DIR: /var/cache/sacramento-budget
+      BUDGET_CACHE_TTL_SECONDS: "86400"
+      LOG_LEVEL: INFO
+      APP_BASE_PATH: /
+    volumes:
+      - budget-cache:/var/cache/sacramento-budget
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    restart: unless-stopped
+
+volumes:
+  budget-cache:
