@@ -181,4 +181,3 @@ For ordinary main-content changes:
 For an explicitly requested navigation or footer change, also capture before
 and after screenshots, record measured alignment and dimensions, and confirm
 that every unrelated shell detail remains unchanged.
-

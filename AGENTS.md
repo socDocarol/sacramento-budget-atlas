@@ -141,4 +141,3 @@ The intended remote is the private repository
 `gh api user --jq '.login'` returns exactly `socDocarol`. Use the repository
 local Git identity. Never make the repository public or deploy it without
 explicit approval.
-
