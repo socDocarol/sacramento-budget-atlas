@@ -245,6 +245,12 @@ photography reuse terms.
 
 ## Further notes
 
+- [`AGENTS.md`](AGENTS.md) defines the protected navigation and footer
+  contracts, change boundaries, and validation procedure for future agents.
+- [`docs/graphic-standards.md`](docs/graphic-standards.md) applies the included
+  [`City of Sacramento Graphic Standards`](docs/standards/City-of-Sacramento-Graphic-Standards.pdf)
+  to this application while separating official identity rules from Atlas
+  design choices.
 - [`docs/demo-status.md`](docs/demo-status.md) records the local visual smoke
   result and known limitations.
 - [`docs/source-certification.md`](docs/source-certification.md) records the
