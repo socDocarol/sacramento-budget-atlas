@@ -136,8 +136,19 @@ Only change a protected shell surface after an explicit user request. Then:
 
 ## GitHub boundary
 
-The intended remote is the private repository
-`socDocarol/sacramento-budget-atlas`. Before a push, verify that
-`gh api user --jq '.login'` returns exactly `socDocarol`. Use the repository
-local Git identity. Never make the repository public or deploy it without
-explicit approval.
+Do not assume a particular GitHub owner, account, organization, or remote.
+Contributors may work from a fork.
+
+Before committing or pushing:
+
+1. Inspect `git remote -v`, the current branch, and its upstream.
+2. Confirm that the selected remote belongs to the contributor or organization
+   that authorized the work.
+3. Verify the authenticated GitHub account with
+   `gh api user --jq '.login'` when GitHub CLI is used.
+4. Use an appropriate repository-local Git identity.
+5. Push only to the intended branch and remote.
+
+Preserve the repository's current visibility. Never make a repository public,
+transfer it, change its default branch protections, open a pull request against
+an upstream project, or deploy the application without explicit approval.
