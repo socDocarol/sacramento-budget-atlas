@@ -1682,7 +1682,6 @@ body:has(.city-story-studio) .city-overview-scope-panel .city-stat-card__value {
 @media (min-width: 1101px) {
   body:has(.city-story-studio) .city-story-studio__narrative {
     grid-template-rows: auto auto auto auto minmax(0, 1fr);
-    padding-right: 0;
     align-content: stretch;
   }
   body:has(.city-story-studio) .city-story-studio__hero-figure {
@@ -1700,16 +1699,9 @@ body:has(.city-story-studio) .city-overview-scope-panel .city-stat-card__value {
     grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr);
     gap: 1.5rem;
   }
-  body:has(.city-story-studio) .city-story-studio__jump-panel {
-    width: 100%;
-  }
   body:has(.city-story-studio) .city-story-studio__secondary-figure {
-    box-sizing: border-box;
-    padding-inline: 0;
-  }
-  body:has(.city-story-studio) .city-story-studio__secondary-image {
-    width: 100%;
-    max-width: none;
+    padding-left: calc(1.15rem + 4px);
+    padding-right: 1.15rem;
   }
 }
 

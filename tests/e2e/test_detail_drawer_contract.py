@@ -524,11 +524,17 @@ def test_visible_fund_scopes_and_fiscal_year_bars_keep_drawer_context(
     chart = page.locator("#overview-trend_chart")
     page.wait_for_function(
         """() => {
-          const plot = document.querySelector('#overview-trend_chart .js-plotly-plot');
-          return Boolean(plot && plot.data && plot.data[0] && plot.data[0].x && plot.data[0].x.length);
+          const widget = document.querySelector('#overview-trend_chart');
+          const plot = widget?.querySelector('.js-plotly-plot');
+          return Boolean(widget && !widget.classList.contains('recalculating') && plot &&
+            plot.data && plot.data[0] && plot.data[0].name === 'Expenses' &&
+            plot.data[0].x && plot.data[0].x.length === 15 &&
+            Number(plot.data[0].y[plot.data[0].y.length - 1]) === 732215119 &&
+            plot.querySelector('.barlayer path'));
         }""",
         timeout=30_000,
     )
+    page.wait_for_timeout(500)
     selected_scope = "General Fund"
     selected_year = int(chart.locator(".js-plotly-plot").evaluate("node => Number(node.data[0].x[0])"))
     chart.locator(".barlayer path").first.click(force=True)
@@ -552,39 +558,22 @@ def test_department_fund_category_and_exact_record_headers_show_complete_path(
     assert page.locator(f"{DRAWER} .city-breadcrumbs").inner_text() == "Citywide / Public Works"
     assert "FY2027" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
 
-    for expected_path in (
-        "Citywide / Public Works / Recycling and Solid Waste",
-        "Citywide / Public Works / Recycling and Solid Waste / Charges, Fees, and Services",
-    ):
-        previous_title = page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text()
-        page.locator(f"{DRAWER} [data-detail-expand]").click()
-        page.locator("#overview-analysis-workspace").wait_for(timeout=20_000)
-        wait_overview_settled(page)
-        page.locator("#overview-analysis-workspace .city-movement").first.click()
-        page.wait_for_function(
-            "previous => { const title = document.querySelector('.city-detail-drawer__title'); "
-            "return title && title.textContent.trim() && title.textContent.trim() !== previous; }",
-            arg=previous_title,
-            timeout=30_000,
-        )
-        wait_drawer_values(page)
-        assert page.locator(f"{DRAWER} .city-breadcrumbs").inner_text() == expected_path
-        assert "FY2027" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
-
-    close_drawer(page)
-    page.locator(".city-movement").first.click()
-    wait_lifecycle(page, "open")
-    wait_drawer_values(page)
+    previous_title = page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text()
     page.locator(f"{DRAWER} [data-detail-expand]").click()
     page.locator("#overview-analysis-workspace").wait_for(timeout=20_000)
     wait_overview_settled(page)
     page.locator("#overview-analysis-workspace .city-movement").first.click()
     page.wait_for_function(
-        "() => document.querySelector('.city-breadcrumbs')?.textContent.trim() === "
-        "'Citywide / Public Works / Recycling and Solid Waste'",
+        "previous => { const title = document.querySelector('.city-detail-drawer__title'); "
+        "return title && title.textContent.trim() && title.textContent.trim() !== previous; }",
+        arg=previous_title,
         timeout=30_000,
     )
     wait_drawer_values(page)
+    assert page.locator(f"{DRAWER} .city-breadcrumbs").inner_text() == (
+        "Citywide / Public Works / Recycling and Solid Waste"
+    )
+
     page.locator(f"{DRAWER} [data-detail-expand]").click()
     page.locator("#overview-analysis-workspace").wait_for(timeout=20_000)
     wait_overview_settled(page)
@@ -606,6 +595,30 @@ def test_department_fund_category_and_exact_record_headers_show_complete_path(
     assert title.startswith("ObjectId "), title
     assert breadcrumb.startswith("Citywide / ") and " / ObjectId " in breadcrumb, breadcrumb
     assert "FY2027" in context and "approved" in context.lower(), context
+
+    ready(page, live_server_url)
+    page.locator(".city-movement").first.click()
+    wait_lifecycle(page, "open")
+    wait_drawer_values(page)
+    for expected_path in (
+        "Citywide / Public Works / Recycling and Solid Waste",
+        "Citywide / Public Works / Recycling and Solid Waste / Charges, Fees, and Services",
+    ):
+        previous_title = page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text()
+        page.locator(f"{DRAWER} [data-detail-expand]").click()
+        page.locator("#overview-analysis-workspace").wait_for(timeout=20_000)
+        wait_overview_settled(page)
+        page.locator("#overview-analysis-workspace .city-movement").first.click()
+        page.wait_for_function(
+            "previous => { const title = document.querySelector('.city-detail-drawer__title'); "
+            "return title && title.textContent.trim() && title.textContent.trim() !== previous; }",
+            arg=previous_title,
+            timeout=30_000,
+        )
+        wait_drawer_values(page)
+        assert page.locator(f"{DRAWER} .city-breadcrumbs").inner_text() == expected_path
+        assert "FY2027" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
+
     close_drawer(page)
 
 

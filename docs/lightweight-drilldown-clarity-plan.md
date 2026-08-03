@@ -1,6 +1,40 @@
 # Lightweight Drilldown Clarity Plan
 
-**Status:** Implementation in progress. The bounded lens and contextual drawer work are now wired, with browser acceptance coverage still running.
+**Status:** Implemented, validation complete.
+
+## Implementation record
+
+The plan is implemented on the existing Overview surface. One persistent
+drawer remains the only detail shell, with the existing side-drawer and mobile
+bottom-sheet behavior. The implementation adds the bounded `authority`,
+`net_position`, and `source_records` presentation lenses without changing
+analytical rows, adding a route, adding a chart, or issuing a source request.
+
+The drawer now identifies fiscal year, flow, fund scope, hierarchy path, and
+ObjectId where applicable. Net Position leads with the homepage net amount and
+its revenue and expense support. Budget Rows leads with the homepage matching
+row count and its revenue and expense counts. Ordinary selections reset special
+lenses to `authority`. Copied state includes the lens, and bookmarks without a
+lens restore as `authority`.
+
+Validation used prepared cache pointer `v1-d3894619890346c9` with background
+refresh disabled. Ruff passed. The focused unit set passed 15 tests. The
+drawer contract passed 19 browser tests, the broader application contract
+passed 18 browser tests, and three Shiny 1.7 contracts passed with test mode
+enabled. The maintained follow-up and final action audits passed with no
+browser or local HTTP errors and no external refresh. Required visual captures
+were reviewed at 2048, 1440, 800, and 390 CSS pixels.
+
+At 1440 by 1100 pixels, the cached direct Python server measured a 51.2 ms
+median click-to-title time and a 224.6 ms median drawer-ready time. The
+recorded baseline was 227.3 ms and 233.2 ms respectively, so both remain
+within the plan budget. The prepared-performance helper was also attempted,
+but its Windows `shiny.exe` launcher exited before readiness. The validated
+browser evidence used the direct `python -m shiny` cached-server workaround.
+
+The existing All Funds percentage was not changed. The observed denominator is
+`$3,198,843,350`, which produces the current 50.0% All Funds display. Its
+denominator remains a separate data-owner language question.
 
 **Baseline:** `main` at merge commit `d554d49`, which contains the accepted
 opening-layout refinement from pull request 1.
