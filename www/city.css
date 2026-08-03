@@ -1631,3 +1631,84 @@ body:has(.city-story-studio) .city-overview-scope-panel .city-stat-card__value {
 .city-brand-logo {
   height: 52px;
 }
+
+/* Keep the first analytical chart visible in short desktop viewports. */
+@media (min-width: 1101px) and (max-height: 1100px) {
+  body:has(.city-story-studio) .city-story-studio__stage {
+    min-height: 0;
+    padding-block: 1.25rem .9rem;
+  }
+  body:has(.city-story-studio) .city-story-studio__live-controls {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .55rem .75rem;
+  }
+  body:has(.city-story-studio) .city-story-studio__live-reset {
+    grid-column: 1 / 2;
+  }
+  body:has(.city-story-studio) .city-story-studio__live-note {
+    grid-column: 2 / -1;
+    align-self: center;
+  }
+  body:has(.city-story-studio) .city-story-studio__live {
+    padding-block: .85rem .9rem;
+  }
+  body:has(.city-story-studio) .city-story-studio__analysis-slot {
+    gap: .5rem;
+    padding-top: .6rem;
+  }
+  body:has(.city-story-studio) .city-story-studio__live-kpis > .shiny-html-output > div {
+    gap: .5rem;
+  }
+  body:has(.city-story-studio) .city-story-studio__live-kpis .city-stat-card {
+    padding-block: .55rem;
+  }
+  body:has(.city-story-studio) .city-story-studio__live-kpis .city-stat-card__value {
+    font-size: 1.5rem;
+  }
+  body:has(.city-story-studio) .city-story-studio__live-chart .city-chart-frame {
+    padding-top: 0;
+  }
+  body:has(.city-story-studio) #overview-trend_chart {
+    height: 216px !important;
+  }
+}
+
+/* Align the editorial image and support row with the live chart column. */
+@media (min-width: 1101px) {
+  body:has(.city-story-studio) .city-story-studio__narrative {
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    align-content: stretch;
+  }
+  body:has(.city-story-studio) .city-story-studio__hero-figure {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-self: stretch;
+    min-height: 0;
+  }
+  body:has(.city-story-studio) .city-story-studio__hero-image {
+    height: 100%;
+    min-height: 0;
+    aspect-ratio: auto;
+  }
+  body:has(.city-story-studio) .city-story-studio__support {
+    grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr);
+    gap: 1.5rem;
+  }
+  body:has(.city-story-studio) .city-story-studio__secondary-figure {
+    padding-left: calc(1.15rem + 4px);
+    padding-right: 1.15rem;
+  }
+}
+
+@media (max-width: 900px) {
+  body:has(.city-story-studio) .city-story-studio__support {
+    grid-template-columns: 1fr;
+  }
+  body:has(.city-story-studio) .city-story-studio__secondary-figure {
+    grid-template-columns: 1fr;
+    padding-inline: 0;
+  }
+  body:has(.city-story-studio) .city-story-studio__secondary-image {
+    width: 100%;
+  }
+}

@@ -13,8 +13,8 @@ The default Overview begins with one combined, scroll-first composition:
 2. Sacramento Historic City Hall as the primary documentary image.
 3. Live fiscal-year controls, all four current KPIs, and the trend chart in the
    same horizontal stage.
-4. A City Council chambers ribbon, a Citywide to exact-record pathway, and
-   direct links to the existing live views.
+4. A City Council chambers ribbon on the right and direct links to the
+   existing live views on the left.
 5. Generated river and civic ornaments used as one continuous, low-contrast
    background treatment behind the editorial and analytical surfaces.
 6. Movements, fund scopes, exact data, and deeper analysis continuing directly
@@ -24,7 +24,10 @@ The desktop stage uses a 120rem maximum width with 24px minimum gutters and a
 40px interior inset so content does not touch the tinted section boundary. At
 2048 by 1152 it becomes a 1872px canvas. The official City photographs explain
 the subject: the City Hall image is 256px high and the Council chambers image
-is 192px high. Generated river and civic artwork remains faint and cohesive
+is 192px high. The City Hall figure extends to the lower edge of the live
+analysis panel. The support row mirrors the stage: Related Views sits on the
+left, while the Council chambers ribbon sits on the right at the live chart's
+content width. Generated river and civic artwork remains faint and cohesive
 across the background instead of appearing as isolated graphics.
 
 The lower Overview uses the same horizontal principle. Six signed department
