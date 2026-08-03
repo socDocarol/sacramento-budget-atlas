@@ -1,6 +1,6 @@
 # Lightweight Drilldown Clarity Plan
 
-**Status:** Plan only. No drilldown implementation is included in this branch.
+**Status:** Implementation in progress. The bounded lens and contextual drawer work are now wired, with browser acceptance coverage still running.
 
 **Baseline:** `main` at merge commit `d554d49`, which contains the accepted
 opening-layout refinement from pull request 1.

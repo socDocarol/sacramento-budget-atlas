@@ -371,9 +371,14 @@ table.city-detail-table td { padding: 10px 12px; border-bottom: 1px solid var(--
 .city-detail-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; min-width: 0; padding: var(--city-space-5); }
 .city-detail-metrics > * { min-width: 0; }
 .city-compact-detail { padding: var(--city-space-4); }
-.city-detail-drawer__heading { display: grid; gap: var(--city-space-2); min-width: 0; }
+.city-detail-drawer__heading { display: grid; gap: var(--city-space-2); min-width: 0; padding-left: var(--city-space-3); border-left: 3px solid var(--city-sky); }
 .city-detail-drawer__heading > * { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.city-detail-overlay[data-detail-accent="revenue"] .city-detail-drawer__heading { border-left-color: var(--city-sky); }
+.city-detail-overlay[data-detail-accent="expense"] .city-detail-drawer__heading { border-left-color: var(--city-gold); }
+.city-detail-overlay[data-detail-accent="net"] .city-detail-drawer__heading { border-left-color: var(--city-green); }
+.city-detail-overlay[data-detail-accent="records"] .city-detail-drawer__heading { border-left-color: var(--city-cobalt); }
 .city-detail-drawer__title { max-width: 100%; overflow-wrap: anywhere; hyphens: auto; font-size: clamp(1.4rem, 2.4vw, 2.2rem); }
+.city-detail-drawer__context { margin: 0; color: var(--city-ink); font-size: .84rem; line-height: 1.45; overflow-wrap: anywhere; }
 .city-detail-drawer__body { display: grid; align-content: start; gap: var(--city-space-5); min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--city-space-5); }
 .city-detail-drawer__body > * { min-width: 0; }
 .city-detail-drawer__actions { min-width: 0; padding: var(--city-space-4) var(--city-space-5); border-top: 1px solid var(--city-line); background: #fff; }
@@ -399,15 +404,15 @@ table.city-detail-table td { padding: 10px 12px; border-bottom: 1px solid var(--
 .city-detail-table { max-width: 100%; overflow: auto; }
 .city-detail-annual { max-width: 100%; overflow: auto; }
 .city-detail-overlay:is([data-detail-content-state="pending"], [data-detail-content-state="loading"]) .city-detail-drawer { isolation: isolate; }
-.city-detail-overlay:is([data-detail-content-state="pending"], [data-detail-content-state="loading"]) .city-detail-drawer__heading > :is(.city-detail-drawer__title, .city-breadcrumbs),
-.city-detail-overlay:is([data-detail-content-state="pending"], [data-detail-content-state="loading"]) .city-detail-drawer__heading > :is(.city-detail-drawer__title, .city-breadcrumbs) * { visibility: hidden !important; }
+.city-detail-overlay:is([data-detail-content-state="pending"], [data-detail-content-state="loading"]) .city-detail-drawer__heading > :is(.city-detail-drawer__title, .city-detail-drawer__context, .city-breadcrumbs),
+.city-detail-overlay:is([data-detail-content-state="pending"], [data-detail-content-state="loading"]) .city-detail-drawer__heading > :is(.city-detail-drawer__title, .city-detail-drawer__context, .city-breadcrumbs) * { visibility: hidden !important; }
 .city-detail-overlay:is([data-detail-content-state="pending"], [data-detail-content-state="loading"]) .city-detail-drawer__body { position: relative; isolation: isolate; min-height: 4rem; }
 .city-detail-overlay:is([data-detail-content-state="pending"], [data-detail-content-state="loading"]) .city-detail-drawer__body > :not([role="status"]):not([aria-live]),
 .city-detail-overlay:is([data-detail-content-state="pending"], [data-detail-content-state="loading"]) .city-detail-drawer__body > :not([role="status"]):not([aria-live]) * { visibility: hidden !important; }
 .city-detail-overlay:is([data-detail-content-state="pending"], [data-detail-content-state="loading"]) .city-detail-drawer__body::after { position: absolute; z-index: 1; inset: 0; content: ""; border-radius: inherit; background: linear-gradient(100deg, transparent 20%, rgb(255 255 255 / .68) 50%, transparent 80%); animation: city-progressive-sheen 1.2s ease-in-out infinite; pointer-events: none; }
 .city-detail-overlay[data-detail-content-state="ready"] .city-detail-drawer__body > * { visibility: visible; opacity: 1; }
-.city-detail-overlay[data-detail-content-state="ready"] .city-detail-drawer__heading > :is(.city-detail-drawer__title, .city-breadcrumbs),
-.city-detail-overlay[data-detail-content-state="ready"] .city-detail-drawer__heading > :is(.city-detail-drawer__title, .city-breadcrumbs) * { visibility: visible !important; }
+.city-detail-overlay[data-detail-content-state="ready"] .city-detail-drawer__heading > :is(.city-detail-drawer__title, .city-detail-drawer__context, .city-breadcrumbs),
+.city-detail-overlay[data-detail-content-state="ready"] .city-detail-drawer__heading > :is(.city-detail-drawer__title, .city-detail-drawer__context, .city-breadcrumbs) * { visibility: visible !important; }
 .city-detail-overlay[data-detail-content-state] .city-detail-drawer__body :is([role="status"], [aria-live]),
 .city-detail-overlay[data-detail-content-state] .city-detail-drawer__body :is([role="status"], [aria-live]) * { position: relative; z-index: 2; visibility: visible !important; }
 body.city-detail-open { overscroll-behavior: contain; }
@@ -1677,6 +1682,7 @@ body:has(.city-story-studio) .city-overview-scope-panel .city-stat-card__value {
 @media (min-width: 1101px) {
   body:has(.city-story-studio) .city-story-studio__narrative {
     grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    padding-right: 0;
     align-content: stretch;
   }
   body:has(.city-story-studio) .city-story-studio__hero-figure {
@@ -1694,9 +1700,16 @@ body:has(.city-story-studio) .city-overview-scope-panel .city-stat-card__value {
     grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr);
     gap: 1.5rem;
   }
+  body:has(.city-story-studio) .city-story-studio__jump-panel {
+    width: 100%;
+  }
   body:has(.city-story-studio) .city-story-studio__secondary-figure {
-    padding-left: calc(1.15rem + 4px);
-    padding-right: 1.15rem;
+    box-sizing: border-box;
+    padding-inline: 0;
+  }
+  body:has(.city-story-studio) .city-story-studio__secondary-image {
+    width: 100%;
+    max-width: none;
   }
 }
 

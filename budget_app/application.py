@@ -262,7 +262,7 @@ def _application_ui(_request: Any) -> Any:
         ui.tags.meta(name="robots", content="noindex, nofollow"),
         ui.tags.meta(name="viewport", content="width=device-width, initial-scale=1"),
         ui.tags.link(rel="icon", href="assets/COStreatmentBLUE.png"),
-        ui.tags.link(rel="stylesheet", href="city.css?v=20260803c"),
+        ui.tags.link(rel="stylesheet", href="city.css?v=20260803f"),
         ui.tags.script(src="app.js", defer=True),
         ui.div(
             city_header_ui(nav_input_id="app_view"),
@@ -365,6 +365,7 @@ def _server(input: Inputs, output: Outputs, session: Session) -> None:
     detail_selection = reactive.Value(OverviewSelectionState())
     drawer_desired_open = reactive.Value(False)
     workspace_desired_open = reactive.Value(False)
+    presentation_lens = reactive.Value("authority")
     detail_close_generation = reactive.Value(0)
     restored_inputs: dict[str, Any] = {}
     restored_overview_state: dict[str, Any] = {}
@@ -544,6 +545,7 @@ def _server(input: Inputs, output: Outputs, session: Session) -> None:
             presentation = OverviewPresentationState(
                 drawer_open=drawer_desired_open.get(),
                 workspace_open=workspace_desired_open.get(),
+                lens=presentation_lens.get(),
             )
         state.values["overview_selection"] = compose_overview_bookmark_value(selection, presentation)
 
@@ -587,6 +589,7 @@ def _server(input: Inputs, output: Outputs, session: Session) -> None:
         detail_selection=detail_selection,
         drawer_desired_open=drawer_desired_open,
         workspace_desired_open=workspace_desired_open,
+        presentation_lens=presentation_lens,
         defer_context_callback=_update_detail_context,
         detail_close_signal=detail_close_generation,
     )
@@ -638,6 +641,7 @@ def _server(input: Inputs, output: Outputs, session: Session) -> None:
         snapshot=snapshot,
         selection=detail_selection,
         drawer_desired_open=drawer_desired_open,
+        presentation_lens=presentation_lens,
         context_callback=_update_detail_context,
         expand_callback=_expand_integrated_detail,
         close_callback=_detail_closed,
@@ -671,6 +675,7 @@ def _server(input: Inputs, output: Outputs, session: Session) -> None:
             "detail_selection": detail_selection().as_bookmark_value(),
             "drawer_desired_open": drawer_desired_open(),
             "workspace_desired_open": workspace_desired_open(),
+            "presentation_lens": presentation_lens(),
             "detail_close_generation": detail_close_generation(),
             "snapshot_stale": (current.snapshot.stale if current is not None else None)
             or (refresh_state().get("status") == "stale"),
