@@ -102,30 +102,15 @@ def story_studio_ui(
         ),
         ui.div(
             ui.div(
-                ui.div("From citywide scope to exact records", class_="city-story-studio__path-eyebrow"),
-                ui.tags.ol(
-                    ui.tags.li(
-                        ui.span("Citywide", class_="city-story-studio__path-label"),
-                        ui.span(
-                            "Approved authority at the full scope", class_="city-story-studio__path-detail"
-                        ),
-                        class_="city-story-studio__path-step",
-                    ),
-                    ui.tags.li(
-                        ui.span("Department", class_="city-story-studio__path-label"),
-                        ui.span(
-                            "Hierarchy context for a selected area", class_="city-story-studio__path-detail"
-                        ),
-                        class_="city-story-studio__path-step",
-                    ),
-                    ui.tags.li(
-                        ui.span("Exact records", class_="city-story-studio__path-label"),
-                        ui.span("Source rows and ObjectId detail", class_="city-story-studio__path-detail"),
-                        class_="city-story-studio__path-step",
-                    ),
-                    class_="city-story-studio__path-list",
+                ui.div("Related views", class_="city-story-studio__jump-eyebrow"),
+                ui.tags.nav(
+                    _jump_link("Overview", "#view-overview", detail="Citywide totals and movements"),
+                    _jump_link("What changed", "#view-changed", detail="Fiscal-year movements"),
+                    _jump_link("Explorer", "#view-explorer", detail="Exact supporting records"),
+                    aria_label="Related budget views",
+                    class_="city-story-studio__jump-list",
                 ),
-                class_="city-story-studio__pathway",
+                class_="city-story-studio__jump-panel",
             ),
             ui.tags.figure(
                 ui.tags.img(
@@ -142,17 +127,6 @@ def story_studio_ui(
                     class_="city-story-studio__caption",
                 ),
                 class_="city-story-studio__secondary-figure",
-            ),
-            ui.div(
-                ui.div("Related views", class_="city-story-studio__jump-eyebrow"),
-                ui.tags.nav(
-                    _jump_link("Overview", "#view-overview", detail="Citywide totals and movements"),
-                    _jump_link("What changed", "#view-changed", detail="Fiscal-year movements"),
-                    _jump_link("Explorer", "#view-explorer", detail="Exact supporting records"),
-                    aria_label="Related budget views",
-                    class_="city-story-studio__jump-list",
-                ),
-                class_="city-story-studio__jump-panel",
             ),
             class_="city-story-studio__support",
         ),
