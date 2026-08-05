@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import pytest
 from playwright.sync_api import Browser, BrowserContext, Page, expect
@@ -432,6 +434,289 @@ def test_bookmark_restored_open_drawer_preserves_shell_and_close_cleanup(
         restored.close()
 
 
+def test_homepage_lenses_match_card_values_and_reset_on_ordinary_selection(
+    page: Page, live_server_url: str
+) -> None:
+    ready(page, live_server_url)
+
+    def open_card(index: int, lens: str, title: str) -> str:
+        card = page.locator(".city-kpi-button").nth(index)
+        card_value = card.locator(".city-stat-card__value").inner_text()
+        card.click()
+        wait_lifecycle(page, "open")
+        wait_drawer_values(page)
+        expect(page.locator(SHELL)).to_have_attribute("data-detail-lens", lens)
+        expect(page.locator(f"{DRAWER} .city-detail-drawer__title")).to_have_text(title)
+        assert page.locator(f"{DRAWER} .city-detail-metrics .city-stat-card__value").first.inner_text() == card_value
+        return card_value
+
+    revenue = open_card(0, "authority", "Citywide approved revenue")
+    assert revenue.startswith("$")
+    close_drawer(page)
+
+    expenses = open_card(1, "authority", "Citywide approved expenses")
+    assert expenses.startswith("$")
+    close_drawer(page)
+
+    net = open_card(2, "net_position", "Citywide net position")
+    assert net.startswith("$")
+    assert "FY2027" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
+    assert "Revenue $1.7B" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
+    assert "Expenses $1.6B" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
+    close_drawer(page)
+
+    source_rows = open_card(3, "source_records", "FY2027 approved-budget source records")
+    assert source_rows == "11,433"
+    source_context = page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
+    assert "11,433 matching rows" in source_context
+    assert "Revenue rows 685" in source_context
+    assert "Expense rows 10,748" in source_context
+    close_drawer(page)
+
+    for special_index, ordinary_index in ((2, 0), (3, 1)):
+        page.locator(".city-kpi-button").nth(special_index).click()
+        wait_lifecycle(page, "open")
+        wait_drawer_values(page)
+        close_drawer(page)
+        page.locator(".city-kpi-button").nth(ordinary_index).click()
+        wait_lifecycle(page, "open")
+        wait_drawer_values(page)
+        expect(page.locator(SHELL)).to_have_attribute("data-detail-lens", "authority")
+        assert "net position" not in page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text().lower()
+        assert "source records" not in page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text().lower()
+        close_drawer(page)
+
+
+def test_visible_fund_scopes_and_fiscal_year_bars_keep_drawer_context(
+    page: Page, live_server_url: str
+) -> None:
+    ready(page, live_server_url)
+    scopes = page.locator(".city-overview-scope-panel [data-overview-select]").evaluate_all(
+        """nodes => nodes.map(node => ({
+          value: node.getAttribute('data-selection-scope'),
+          label: node.querySelector('.city-stat-card__label')?.textContent.trim()
+        }))"""
+    )
+    assert len(scopes) == 6, scopes
+
+    for scope in scopes:
+        trigger = page.locator(
+            f".city-overview-scope-panel [data-overview-select][data-selection-scope='{scope['value']}']"
+        )
+        trigger.click()
+        wait_lifecycle(page, "open")
+        wait_drawer_values(page)
+        title = page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text().lower()
+        context = page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
+        if scope["value"] == "all_funds":
+            assert title == "citywide approved expenses", title
+        else:
+            assert str(scope["label"]).lower() in title, (scope, title)
+        assert str(scope["label"]) in context, (scope, context)
+        assert "FY2027" in context
+        assert "Approved expenses" in context
+        close_drawer(page)
+        wait_overview_settled(page)
+
+    page.locator("#overview-flow").select_option("expense")
+    page.locator("#overview-fund_scope").select_option("general_fund")
+    wait_overview_settled(page)
+    chart = page.locator("#overview-trend_chart")
+    page.wait_for_function(
+        """() => {
+          const widget = document.querySelector('#overview-trend_chart');
+          const plot = widget?.querySelector('.js-plotly-plot');
+          return Boolean(widget && !widget.classList.contains('recalculating') && plot &&
+            plot.data && plot.data[0] && plot.data[0].name === 'Expenses' &&
+            plot.data[0].x && plot.data[0].x.length === 15 &&
+            Number(plot.data[0].y[plot.data[0].y.length - 1]) === 732215119 &&
+            plot.querySelector('.barlayer path'));
+        }""",
+        timeout=30_000,
+    )
+    page.wait_for_timeout(500)
+    selected_scope = "General Fund"
+    selected_year = int(chart.locator(".js-plotly-plot").evaluate("node => Number(node.data[0].x[0])"))
+    chart.locator(".barlayer path").first.click(force=True)
+    wait_lifecycle(page, "open")
+    wait_drawer_values(page)
+    chart_context = page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
+    assert f"FY{selected_year}" in chart_context, chart_context
+    assert selected_scope in chart_context, chart_context
+    assert "Approved expenses" in chart_context, chart_context
+    close_drawer(page)
+
+
+def test_department_fund_category_and_exact_record_headers_show_complete_path(
+    page: Page, live_server_url: str
+) -> None:
+    ready(page, live_server_url)
+    page.locator(".city-movement").first.click()
+    wait_lifecycle(page, "open")
+    wait_drawer_values(page)
+    assert page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text() == "Public Works"
+    assert page.locator(f"{DRAWER} .city-breadcrumbs").inner_text() == "Citywide / Public Works"
+    assert "FY2027" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
+
+    previous_title = page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text()
+    page.locator(f"{DRAWER} [data-detail-expand]").click()
+    page.locator("#overview-analysis-workspace").wait_for(timeout=20_000)
+    wait_overview_settled(page)
+    page.locator("#overview-analysis-workspace .city-movement").first.click()
+    page.wait_for_function(
+        "previous => { const title = document.querySelector('.city-detail-drawer__title'); "
+        "return title && title.textContent.trim() && title.textContent.trim() !== previous; }",
+        arg=previous_title,
+        timeout=30_000,
+    )
+    wait_drawer_values(page)
+    assert page.locator(f"{DRAWER} .city-breadcrumbs").inner_text() == (
+        "Citywide / Public Works / Recycling and Solid Waste"
+    )
+
+    page.locator(f"{DRAWER} [data-detail-expand]").click()
+    page.locator("#overview-analysis-workspace").wait_for(timeout=20_000)
+    wait_overview_settled(page)
+    page.wait_for_function(
+        "() => document.querySelectorAll('#overview-records tr[data-index]').length > 0",
+        timeout=30_000,
+    )
+    page.wait_for_timeout(1_000)
+    row = page.locator("#overview-records tr[data-index]").first
+    row.locator("td").first.click()
+    page.wait_for_function(
+        "() => document.querySelector('.city-detail-drawer__title')?.textContent.trim().startsWith('ObjectId')",
+        timeout=30_000,
+    )
+    wait_drawer_values(page)
+    title = page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text()
+    breadcrumb = page.locator(f"{DRAWER} .city-breadcrumbs").inner_text()
+    context = page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
+    assert title.startswith("ObjectId "), title
+    assert breadcrumb.startswith("Citywide / ") and " / ObjectId " in breadcrumb, breadcrumb
+    assert "FY2027" in context and "approved" in context.lower(), context
+
+    ready(page, live_server_url)
+    page.locator(".city-movement").first.click()
+    wait_lifecycle(page, "open")
+    wait_drawer_values(page)
+    for expected_path in (
+        "Citywide / Public Works / Recycling and Solid Waste",
+        "Citywide / Public Works / Recycling and Solid Waste / Charges, Fees, and Services",
+    ):
+        previous_title = page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text()
+        page.locator(f"{DRAWER} [data-detail-expand]").click()
+        page.locator("#overview-analysis-workspace").wait_for(timeout=20_000)
+        wait_overview_settled(page)
+        page.locator("#overview-analysis-workspace .city-movement").first.click()
+        page.wait_for_function(
+            "previous => { const title = document.querySelector('.city-detail-drawer__title'); "
+            "return title && title.textContent.trim() && title.textContent.trim() !== previous; }",
+            arg=previous_title,
+            timeout=30_000,
+        )
+        wait_drawer_values(page)
+        assert page.locator(f"{DRAWER} .city-breadcrumbs").inner_text() == expected_path
+        assert "FY2027" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
+
+    close_drawer(page)
+
+
+def test_close_backdrop_history_refresh_and_legacy_bookmarks_preserve_contract(
+    page: Page, live_server_url: str
+) -> None:
+    ready(page, live_server_url)
+    trigger = page.locator(".city-movement").first
+    trigger.click()
+    wait_lifecycle(page, "open")
+    expect(page.locator(f"{DRAWER} [data-detail-close]").first).to_be_focused()
+    page.locator(f"{SHELL} [data-detail-backdrop]").click(position={"x": 5, "y": 5})
+    wait_lifecycle(page, "closed")
+    assert_closed_cleanup(page, trigger)
+
+    trigger.click()
+    wait_lifecycle(page, "open")
+    page.locator(f"{DRAWER} [data-detail-close]").first.click()
+    wait_lifecycle(page, "closed")
+    assert_closed_cleanup(page, trigger)
+
+    page.locator(".city-kpi-button").nth(2).click()
+    wait_lifecycle(page, "open")
+    wait_drawer_values(page)
+    page.locator(f"{DRAWER} [data-detail-copy]").click()
+    expect(page).to_have_url(re.compile(r"_inputs_"), timeout=20_000)
+    bookmarked = page.url
+
+    restored = page.context.new_page()
+    legacy = page.context.new_page()
+    history = page.context.new_page()
+    try:
+        ready(restored, bookmarked)
+        wait_lifecycle(restored, "open")
+        wait_drawer_values(restored)
+        expect(restored.locator(SHELL)).to_have_attribute("data-detail-lens", "net_position")
+        expect(restored.locator(f"{DRAWER} .city-detail-drawer__title")).to_have_text("Citywide net position")
+        restored.reload(wait_until="domcontentloaded")
+        expect(restored.locator(".city-source-status--fresh")).to_be_visible(timeout=45_000)
+        wait_lifecycle(restored, "open")
+        wait_drawer_values(restored)
+        expect(restored.locator(SHELL)).to_have_attribute("data-detail-lens", "net_position")
+
+        parts = urlsplit(bookmarked)
+        pairs = parse_qsl(parts.query, keep_blank_values=True)
+        raw_selection = next(value for key, value in pairs if key == "overview_selection")
+        legacy_selection = json.loads(raw_selection)
+        legacy_selection.pop("lens", None)
+        legacy_query = urlencode(
+            [
+                (key, json.dumps(legacy_selection, separators=(",", ":")) if key == "overview_selection" else value)
+                for key, value in pairs
+            ]
+        )
+        legacy_url = urlunsplit((parts.scheme, parts.netloc, parts.path, legacy_query, parts.fragment))
+        ready(legacy, legacy_url)
+        wait_lifecycle(legacy, "open")
+        wait_drawer_values(legacy)
+        expect(legacy.locator(SHELL)).to_have_attribute("data-detail-lens", "authority")
+        expect(legacy.locator(f"{DRAWER} .city-detail-drawer__title")).to_have_text(
+            "Citywide combined approved authority"
+        )
+
+        ready(history, live_server_url)
+        history.locator('[data-nav-value="changed"]').first.click()
+        expect(history).to_have_url(re.compile(r"#changed$"))
+        history.go_back()
+        expect(history).to_have_url(re.compile(r"#overview$"))
+        expect(history.locator('[data-view-section="overview"]')).to_be_visible(timeout=20_000)
+    finally:
+        restored.close()
+        legacy.close()
+        history.close()
+
+
+def test_lens_and_hierarchy_journeys_have_no_console_errors(
+    page: Page, live_server_url: str
+) -> None:
+    errors: list[str] = []
+    page.on("console", lambda message: errors.append(f"console: {message.text}") if message.type == "error" else None)
+    page.on("pageerror", lambda error: errors.append(f"page: {error}"))
+    ready(page, live_server_url)
+
+    page.locator(".city-kpi-button").nth(2).click()
+    wait_lifecycle(page, "open")
+    wait_drawer_values(page)
+    close_drawer(page)
+    page.locator(".city-kpi-button").nth(3).click()
+    wait_lifecycle(page, "open")
+    wait_drawer_values(page)
+    close_drawer(page)
+    page.locator(".city-overview-scope-panel [data-overview-select]").last.click()
+    wait_lifecycle(page, "open")
+    wait_drawer_values(page)
+    close_drawer(page)
+    assert errors == [], errors
+
+
 def test_reduced_motion_keyboard_focus_and_cleanup(page: Page, live_server_url: str) -> None:
     page.emulate_media(reduced_motion="reduce")
     ready(page, live_server_url)
@@ -469,7 +754,7 @@ def test_reduced_motion_keyboard_focus_and_cleanup(page: Page, live_server_url: 
     assert_closed_cleanup(page, trigger)
 
 
-@pytest.mark.parametrize("width", (390, 768, 1024, 1440, 1920))
+@pytest.mark.parametrize("width", (390, 800, 1440, 2048))
 def test_shell_metrics_and_long_change_values_fit_every_required_width(
     page: Page, live_server_url: str, width: int
 ) -> None:

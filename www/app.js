@@ -279,6 +279,7 @@
       fund: "data-selection-fund",
       category: "data-selection-category",
       record: "data-selection-record",
+      lens: "data-selection-lens",
     };
     var selection = {};
     Object.keys(fields).forEach(function (key) {
@@ -784,7 +785,8 @@
 
   function syncDetailLifecycle(message) {
     var detail = state.detail;
-    if (!message || !detailShell()) return;
+    var overlay = detailShell();
+    if (!message || !overlay) return;
     var generation = Number(message.generation);
     var hasGeneration = Number.isFinite(generation);
     if (hasGeneration && generation < detail.lifecycleGeneration) return;
@@ -794,6 +796,8 @@
       var changed = detail.contentKey !== null && detail.contentKey !== message.content_key;
       detail.contentKey = message.content_key || detail.contentKey;
       detail.expectedTitle = message.title || null;
+      if (message.lens) overlay.setAttribute("data-detail-lens", message.lens);
+      if (message.accent) overlay.setAttribute("data-detail-accent", message.accent);
       beginDetailOpen({ loading: message.content_state !== "ready" });
       if (message.content_state) {
         setDetailContentState(

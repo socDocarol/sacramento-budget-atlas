@@ -14,6 +14,7 @@ from typing import Any
 
 VALID_VIEWS = frozenset({"overview", "budget101", "changed", "explorer", "methods", "lab"})
 VALID_FLOWS = frozenset({"all", "revenue", "expense"})
+VALID_PRESENTATION_LENSES = frozenset({"authority", "net_position", "source_records"})
 VALID_SCOPES = frozenset(
     {
         "all",
@@ -54,8 +55,9 @@ class OverviewPresentationState:
 
     drawer_open: bool = False
     workspace_open: bool = False
+    lens: str = "authority"
 
-    def as_bookmark_value(self) -> dict[str, bool]:
+    def as_bookmark_value(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -99,7 +101,7 @@ def _coerce_bool(value: Any, *, default: bool = False) -> bool:
 def sanitize_overview_presentation(
     value: Mapping[str, Any] | OverviewPresentationState | None,
 ) -> OverviewPresentationState:
-    """Return bounded drawer and workspace flags from a current or legacy bookmark."""
+    """Return bounded presentation state from a current or legacy bookmark."""
 
     raw: Mapping[str, Any] = (
         value.as_bookmark_value() if isinstance(value, OverviewPresentationState) else value or {}
@@ -107,6 +109,7 @@ def sanitize_overview_presentation(
     return OverviewPresentationState(
         drawer_open=_coerce_bool(raw.get("drawer_open"), default=False),
         workspace_open=_coerce_bool(raw.get("workspace_open"), default=False),
+        lens=_valid_or_default(raw.get("lens"), VALID_PRESENTATION_LENSES, "authority"),
     )
 
 

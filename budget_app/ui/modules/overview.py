@@ -15,6 +15,7 @@ from shinywidgets import output_widget, render_widget
 
 from budget_app.data import FUND_SCOPE_LABELS, filter_rows
 from budget_app.state import (
+    VALID_PRESENTATION_LENSES,
     OverviewPresentationState,
     OverviewSelectionState,
     sanitize_overview_selection,
@@ -218,6 +219,7 @@ def overview_server(
     detail_selection: Any,
     drawer_desired_open: Any,
     workspace_desired_open: Any,
+    presentation_lens: Any,
     defer_context_callback: Callable[[OverviewSelectionState], None],
     detail_close_signal: Any | None = None,
 ) -> OverviewController:
@@ -373,12 +375,20 @@ def overview_server(
         if value.get() != candidate:
             value.set(candidate)
 
+    def _set_presentation_lens(value: Any) -> None:
+        candidate = str(value or "authority")
+        _set_value(
+            presentation_lens,
+            candidate if candidate in VALID_PRESENTATION_LENSES else "authority",
+        )
+
     def restore(value: OverviewSelectionState, presentation: OverviewPresentationState) -> None:
         # Bookmark restoration runs from a post-flush callback, outside a normal
         # reactive consumer. Isolate the reads used to revalidate current source values.
         with reactive.isolate():
             safe = _sanitize_state(value)
             _set_value(selection, safe)
+            _set_presentation_lens(presentation.lens)
             _set_value(workspace_desired_open, presentation.workspace_open)
             if presentation.drawer_open:
                 _set_value(detail_selection, safe)
@@ -389,6 +399,10 @@ def overview_server(
         raw = dict(payload or {})
         current = current_state()
         updates: dict[str, Any] = {}
+
+        # Every explicit selection resolves its presentation meaning. Missing
+        # lenses are ordinary authority selections, preserving old triggers.
+        _set_presentation_lens(raw.get("lens"))
 
         for key in ("year", "compare_year"):
             if key in raw:
@@ -452,6 +466,7 @@ def overview_server(
         current = current_state()
         safe = _sanitize_state(current.updated(**updates, selected_record=None))
         if safe != current:
+            _set_presentation_lens("authority")
             selection.set(safe)
 
     def _selected_year(raw: Any, fallback: int | None) -> int | None:
@@ -498,12 +513,14 @@ def overview_server(
                 "fund": payload.get("fund"),
                 "category": payload.get("category"),
                 "selected_record": payload.get("record"),
+                "lens": payload.get("lens"),
             }
             open_selection({key: value for key, value in normalized.items() if value is not None})
 
     @reactive.effect
     @reactive.event(input.legacy_drilldown)
     def _open_legacy_workspace() -> None:
+        _set_presentation_lens("authority")
         _set_value(drawer_desired_open, False)
         _set_value(workspace_desired_open, True)
 
@@ -520,6 +537,7 @@ def overview_server(
     def _reset() -> None:
         reset = _default_state()
         _set_value(selection, reset)
+        _set_presentation_lens("authority")
         _set_value(workspace_desired_open, False)
         _update_context_inputs(reset)
 
@@ -549,11 +567,13 @@ def overview_server(
             )
         )
         if updated != current:
+            _set_presentation_lens("authority")
             selection.set(updated)
 
     @reactive.effect
     @reactive.event(input.workspace_back)
     def _workspace_back() -> None:
+        _set_presentation_lens("authority")
         current = selection.get()
         if current.selected_record is not None:
             updated = current.updated(selected_record=None)
@@ -570,6 +590,7 @@ def overview_server(
     @reactive.effect
     @reactive.event(input.workspace_clear)
     def _workspace_clear() -> None:
+        _set_presentation_lens("authority")
         current = selection.get()
         selection.set(
             current.updated(
@@ -657,6 +678,7 @@ def overview_server(
             *,
             flow: str,
             tone: str,
+            lens: str = "authority",
         ) -> Any:
             return ui.tags.button(
                 ui.span(label, class_="city-stat-card__label"),
@@ -669,6 +691,7 @@ def overview_server(
                 data_selection_flow=flow,
                 data_selection_scope=current.fund_scope,
                 data_selection_department="",
+                data_selection_lens=lens,
                 aria_label=f"Open {label.lower()} detail for fiscal year {current.year}",
             )
 
@@ -693,6 +716,7 @@ def overview_server(
                 "Revenue less expenses",
                 flow="all",
                 tone="green" if net >= 0 else "gold",
+                lens="net_position",
             ),
             interactive_card(
                 "Budget rows",
@@ -700,6 +724,7 @@ def overview_server(
                 "Exact source records in this context",
                 flow="all",
                 tone="cobalt",
+                lens="source_records",
             ),
             class_="city-grid city-grid--4",
         )
