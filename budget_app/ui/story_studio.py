@@ -49,9 +49,9 @@ def story_studio_ui(
     return ui.tags.section(
         ui.div(
             ui.div(
-                ui.div("Sacramento Approved Budget", class_="city-story-studio__eyebrow"),
+                ui.div("Approved Budget Context", class_="city-story-studio__eyebrow"),
                 ui.h1(
-                    "Sacramento's approved budget, in context.",
+                    "Sacramento Budget Dashboard",
                     class_="city-story-studio__title",
                 ),
                 ui.p(
@@ -133,7 +133,7 @@ def story_studio_ui(
         id="story-studio",
         data_story_studio="opening",
         class_="city-story-studio",
-        aria_label="Sacramento Approved Budget opening",
+        aria_label="Approved Budget Context opening",
     )
 
 

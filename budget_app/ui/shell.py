@@ -51,7 +51,6 @@ def city_header_ui(
     nav_input_id: str = "app_view",
 ) -> Any:
     """Render only the header. The integration layer owns the one ``main`` landmark."""
-    fiscal_year = latest_year or "Latest fiscal year"
     valid_navigation = {key for key, _, _ in PRIMARY_NAVIGATION + RESOURCE_NAVIGATION}
     selected = active if active in valid_navigation else "overview"
     desktop_links = [
@@ -109,7 +108,7 @@ def city_header_ui(
         ui.div(
             ui.a(
                 ui.tags.span("↖", aria_hidden="true", class_="portal-link__icon"),
-                ui.tags.span("Return to portal", class_="portal-link__label"),
+                ui.tags.span("Portal", class_="portal-link__label"),
                 href="/",
                 aria_label="Return to portal",
                 class_="portal-link",
@@ -117,19 +116,16 @@ def city_header_ui(
             ui.div(
                 ui.a(
                     ui.tags.img(
-                        src="assets/COStreatmentBLUE.png",
-                        width="2133",
-                        height="821",
+                        src="assets/footer-icon.png",
+                        width="210",
+                        height="51",
                         alt="City of Sacramento",
                         class_="city-brand-logo",
                     ),
-                    ui.tags.span(
-                        "Approved Budget",
-                        ui.tags.strong(fiscal_year),
-                        class_="city-app-identity",
-                    ),
+                    ui.tags.span("", aria_hidden="true", class_="city-brand-separator"),
+                    ui.tags.span("Budget Dashboard", class_="city-app-identity"),
                     href="/",
-                    aria_label="City of Sacramento Budget Story home",
+                    aria_label="City of Sacramento Budget Dashboard home",
                     class_="city-brand-link",
                 ),
                 ui.tags.nav(
@@ -175,9 +171,9 @@ def city_footer_ui(*, snapshot_label: str | None = None, source_url: str = CITY_
         ui.div(
             ui.div(
                 ui.tags.img(
-                    src="assets/COStreatmentBLUE.png",
-                    width="2133",
-                    height="821",
+                    src="assets/footer-icon.png",
+                    width="210",
+                    height="51",
                     alt="City of Sacramento",
                     class_="city-footer-logo",
                 ),

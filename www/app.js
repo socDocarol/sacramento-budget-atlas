@@ -45,6 +45,10 @@
     lastSelectionFallbackId: null,
     lastLocationSynced: null,
     handlingLocation: false,
+    header: {
+      lastScrollY: 0,
+      ticking: false,
+    },
     detail: {
       element: null,
       drawer: null,
@@ -94,6 +98,42 @@
     window.setTimeout(function () {
       window.scrollTo(0, 0);
     }, 0);
+  }
+
+  function revealHeader() {
+    var header = document.querySelector(".city-header");
+    if (header) header.classList.remove("is-scroll-hidden");
+  }
+
+  function syncHeaderToScroll() {
+    var header = document.querySelector(".city-header");
+    var currentY = Math.max(0, window.scrollY || window.pageYOffset || 0);
+    var delta = currentY - state.header.lastScrollY;
+    var keepsHeaderVisible = header && (
+      header.matches(":focus-within") || !!header.querySelector("details[open]")
+    );
+
+    if (header) {
+      if (currentY <= 16 || delta < 0 || keepsHeaderVisible) {
+        header.classList.remove("is-scroll-hidden");
+      } else if (currentY > 96 && delta > 0) {
+        header.classList.add("is-scroll-hidden");
+      }
+    }
+
+    state.header.lastScrollY = currentY;
+    state.header.ticking = false;
+  }
+
+  function queueHeaderScrollUpdate() {
+    if (state.header.ticking) return;
+    state.header.ticking = true;
+    window.requestAnimationFrame(syncHeaderToScroll);
+  }
+
+  function initializeHeaderScroll() {
+    state.header.lastScrollY = Math.max(0, window.scrollY || window.pageYOffset || 0);
+    revealHeader();
   }
 
   function setActiveView(value) {
@@ -1104,6 +1144,12 @@
   document.addEventListener("keydown", cancelPendingDetailFocusRestore, true);
   document.addEventListener("keydown", trapDetailFocus);
   document.addEventListener("focusin", keepFocusInsideDetail);
+  document.addEventListener("focusin", function (event) {
+    if (event.target && event.target.closest && event.target.closest(".city-header")) revealHeader();
+  });
+  document.addEventListener("toggle", function (event) {
+    if (event.target && event.target.open && event.target.closest(".city-header")) revealHeader();
+  }, true);
   document.addEventListener("shiny:bound", function (event) { discoverDataFrames(event.target); });
   document.addEventListener("shiny:recalculated", function (event) {
     discoverDataFrames(event.target);
@@ -1114,7 +1160,9 @@
   });
   window.addEventListener("popstate", selectHashView);
   window.addEventListener("hashchange", selectHashView);
+  window.addEventListener("scroll", queueHeaderScrollUpdate, { passive: true });
   document.addEventListener("DOMContentLoaded", function () {
+    initializeHeaderScroll();
     registerShinyHandlers();
     detailShell();
     registerDetailFocusRestoreObserver();
