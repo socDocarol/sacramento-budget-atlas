@@ -30,7 +30,8 @@ The included PDF has SHA-256:
 
 ### Signature artwork
 
-- Use the supplied `www/assets/COStreatmentBLUE.png` artwork.
+- Use the supplied `www/assets/footer-icon.png` white treatment on cobalt shell surfaces.
+- Retain `www/assets/COStreatmentBLUE.png` for existing non-shell uses such as the favicon.
 - Do not recreate the signature with text.
 - Do not recolor, crop, rearrange, distort, rotate, stretch, or animate its
   internal elements.
@@ -112,22 +113,26 @@ content work.
 
 ### Navigation baseline
 
-- Sticky 80 pixel header.
+- Sticky 64 pixel desktop and 60 pixel mobile header.
 - Maximum 120rem shared grid with 24 pixel desktop gutters.
-- Portal link, City identity, and navigation share one vertical center at 40
-  pixels.
-- `Return to portal` is the first item at the grid's left edge.
-- City identity follows it with a 16 pixel visual gap.
-- City signature is 52 pixels high on desktop.
-- Approved Budget identity remains adjacent to the signature.
+- Portal link, City identity, and navigation share one vertical center at 32
+  pixels on desktop and 30 pixels on mobile.
+- `Portal`, preceded by the return arrow, is the first item at the grid's left edge.
+- The City signature, divider, and `Budget Dashboard` title form one centered identity group.
+- City signature is 110 pixels wide on desktop and 84 pixels wide on mobile as
+  an explicit compact-shell exception to the manual's size and clear-space guidance.
+- Header and footer shell backgrounds use official cobalt `#2A3B66`.
+- The visual center of `Sacramento` aligns with the title and the shared header control axis.
 - Primary navigation aligns to the grid's right edge.
 - Existing responsive navigation, link order, labels, targets, active states,
   and focus states remain intact.
+- Directional scrolling fades and slides the header away on downward movement;
+  upward movement, header focus, and open navigation menus restore it.
 
 ### Footer baseline
 
 - Full-width cobalt band.
-- Centered white panel containing the unmodified City signature.
+- Centered white City signature directly on the cobalt band, 210 pixels wide on desktop.
 - Current source and methodology statement.
 - Current snapshot and refresh metadata.
 - Existing responsive stacking, link targets, accessible text, and focus

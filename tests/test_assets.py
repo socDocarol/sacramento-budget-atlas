@@ -18,6 +18,9 @@ def test_city_assets_match_verified_reconstruction_bundle() -> None:
     assert _digest("www/assets/COStreatmentBLUE.png") == (
         "4dc476977e05d38d7894dcae2fcc6f5fdae323ffeb8b1b5254fef3319fd386f6"
     )
+    assert _digest("www/assets/footer-icon.png") == (
+        "4880b4f0ed7b77881a6e98134e1361c89a318791a7c36445f35c6e593dc7c295"
+    )
     assert _digest("www/assets/fonts/JosefinSans-latin-400-700.woff2") == (
         "444f5c461acc0dd1f5c4636c7e27c976a08ca62818717855bbe709b3ae04d086"
     )

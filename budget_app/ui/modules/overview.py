@@ -183,7 +183,7 @@ def overview_ui(id: str = "overview") -> Any:
         ui.div(
             ui.div(
                 section_header(
-                    "Largest movements",
+                    "Largest Changes",
                     "Choose a department to open quick detail without leaving Overview.",
                 ),
                 ui.output_ui("movements"),

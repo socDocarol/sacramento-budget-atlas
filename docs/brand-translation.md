@@ -7,10 +7,12 @@ SHA-256 is
 
 ## Identity
 
-- Use the supplied `COStreatmentBLUE.png` reproduction artwork without
+- Use the supplied `footer-icon.png` white reproduction artwork on the cobalt header and footer without
   recoloring, cropping, rearranging, distortion, or internal animation.
-- Render the signature at no less than 160 CSS pixels wide. This conservative
-  desktop mapping keeps it comfortably above the manual's one-inch guidance.
+- Render the header signature at 110 CSS pixels wide on desktop and 84 CSS
+  pixels on mobile as an explicit compact-shell exception. Render the footer
+  signature at 210 CSS pixels wide on desktop and 184 CSS pixels on mobile;
+  the footer remains above the manual's one-inch guidance.
 - Preserve clear space around the signature of at least 16 CSS pixels.
 - Keep the experimental Atlas name separate from the official signature.
 - Do not use the City seal.

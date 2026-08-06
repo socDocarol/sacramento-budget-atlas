@@ -31,27 +31,29 @@ Protected implementation surfaces:
 - Header and footer markup in `budget_app/ui/shell.py`
 - Header and footer selectors in `www/city.css`
 - Navigation and shell behavior in `www/app.js`
-- City signature artwork at `www/assets/COStreatmentBLUE.png`
+- City signature artwork at `www/assets/footer-icon.png`
 
 ### Navigation bar contract
 
 Preserve all of the following:
 
-- An 80 pixel sticky header.
+- A 64 pixel desktop and 60 pixel mobile sticky header.
 - A shared content grid with a maximum width of 120rem and 24 pixel desktop
   gutters.
-- `Return to portal` first and aligned to the left edge of that grid.
-- The City of Sacramento signature immediately after the portal link.
-- A 16 pixel visual gap between the portal group and City identity group.
-- The City signature at 52 pixels high on desktop.
-- The Approved Budget identity next to the City signature.
+- `Portal`, preceded by the return arrow, aligned to the left edge of that grid.
+- The white City of Sacramento signature and `Budget Dashboard` identity centered as one group.
+- A vertical divider and clear spacing between the City signature and application title.
+- The City signature rendered at 110 pixels wide on desktop and 84 pixels wide on mobile.
+- The visual center of the `Sacramento` wordmark aligned to the title and header control axis.
 - Primary navigation aligned to the right edge of the shared grid.
-- Portal, City identity, and navigation centered on the same vertical axis.
+- Portal, centered City identity, and navigation centered on the same vertical axis.
+- The header fades and slides away while scrolling down, then returns on upward scroll,
+  header focus, or an open navigation menu.
 - The existing desktop and mobile navigation labels, order, targets, active
   states, focus behavior, and responsive transition.
 
 The accepted desktop baseline places the center of the portal group, City
-identity group, and navigation at 40 pixels from the top of the 80 pixel
+identity group, and navigation at 32 pixels from the top of the 64 pixel
 header.
 
 ### Footer contract
@@ -59,7 +61,8 @@ header.
 Preserve all of the following:
 
 - The cobalt background band.
-- The centered white City signature panel.
+- Header and footer shell backgrounds use official cobalt `#2A3B66`.
+- The centered white City signature rendered directly on the cobalt band at 210 pixels wide on desktop.
 - The current source and methodology wording and links.
 - The data snapshot and refresh metadata.
 - Existing spacing, responsive behavior, focus behavior, and accessible text.
