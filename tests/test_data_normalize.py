@@ -47,3 +47,15 @@ def test_normalize_features_enforces_eight_field_contract() -> None:
 def test_unknown_flow_is_rejected() -> None:
     with pytest.raises(DataValidationError, match="unknown ExpenseRevenue"):
         normalize_features([feature(ExpenseRevenue="transfer")])
+
+
+@pytest.mark.parametrize("fiscal_year", [2027.5, "2027.5", "not-a-year", True, 0])
+def test_fractional_or_invalid_fiscal_year_is_rejected(fiscal_year: object) -> None:
+    with pytest.raises(DataValidationError, match="invalid Fiscal_Year"):
+        normalize_features([feature(Fiscal_Year=fiscal_year)])
+
+
+@pytest.mark.parametrize("object_id", [7.5, "7.5", "not-an-id", True, 0])
+def test_fractional_or_invalid_object_id_is_rejected(object_id: object) -> None:
+    with pytest.raises(DataValidationError, match="invalid ObjectId"):
+        normalize_features([feature(ObjectId=object_id)])

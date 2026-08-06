@@ -143,8 +143,8 @@ uv run shiny run --host 127.0.0.1 --port 8125 app.py
 ```
 
 With `BUDGET_BACKGROUND_REFRESH_ENABLED=0`, automatic source refresh is off,
-so the session remains deterministic against the existing cache. An explicit
-Retry Source action still requests a refresh and can contact ArcGIS.
+so the session remains deterministic against the existing cache. Manual source
+refresh is disabled by default and must be enabled explicitly.
 
 ## Configuration
 
@@ -157,6 +157,9 @@ Retry Source action still requests a refresh and can contact ArcGIS.
 | `BUDGET_CACHE_TTL_SECONDS` | `86400` | Freshness window before source metadata is checked |
 | `LOG_LEVEL` | `INFO` | Python logging level |
 | `APP_BASE_PATH` | `/` | Shiny application base path, normalized with leading and trailing slashes |
+| `APP_ALLOWED_HOSTS` | `localhost,127.0.0.1,testserver` | Comma-separated Host header allowlist; set deployed hostnames explicitly |
+| `BUDGET_MANUAL_REFRESH_ENABLED` | `false` | Allow users to request source refreshes from the UI |
+| `BUDGET_MANUAL_REFRESH_COOLDOWN_SECONDS` | `300` | Process-wide cooldown between manual source refreshes |
 | `BUDGET_PREPARED_SCHEMA_VERSION` | `1` | Prepared-bundle schema version |
 
 `BUDGET_BACKGROUND_REFRESH_ENABLED` is an application-level toggle in
@@ -177,6 +180,10 @@ Open <http://127.0.0.1:8000/>. The first container run has an empty named
 volume, so it needs network access for its initial ArcGIS refresh. Subsequent
 runs reuse the volume. The container filesystem is read-only except for the
 cache volume and a temporary filesystem at `/tmp`.
+
+The container exposes `/health/live` for liveness and `/health/ready` for
+traffic admission. Azure-specific topology, settings, and release gates are in
+[`docs/azure-deployment-hardening.md`](docs/azure-deployment-hardening.md).
 
 ## Focused checks
 

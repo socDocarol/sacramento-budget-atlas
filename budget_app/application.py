@@ -5,14 +5,25 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
+import time
 from collections.abc import Mapping
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from shiny import App, Inputs, Outputs, Session, reactive, ui
+from shiny import App, Inputs, Outputs, Session, reactive, render, ui
 from shiny.testmode import export_test_values, snapshot_preprocess_input
+from starlette.applications import Starlette
+from starlette.datastructures import MutableHeaders
+from starlette.middleware import Middleware
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.responses import JSONResponse, RedirectResponse
+from starlette.routing import Mount, Route
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from budget_app.access import NetworkAccessContextProvider
 from budget_app.config import Settings, configure_logging
@@ -59,6 +70,41 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PACIFIC = ZoneInfo("America/Los_Angeles")
 _PROCESS_REFRESH_TASK: asyncio.Task[Any] | None = None
 _STATUS_SUBSCRIBERS: set[Any] = set()
+_LAST_MANUAL_REFRESH_AT = 0.0
+MANUAL_REFRESH_ENABLED = SETTINGS.manual_refresh_enabled or os.getenv("SHINY_TESTMODE") == "1"
+
+
+class SecurityHeadersMiddleware:
+    """Apply a conservative same-origin browser policy to every HTTP response."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers.setdefault("x-content-type-options", "nosniff")
+                headers.setdefault("referrer-policy", "no-referrer")
+                headers.setdefault("permissions-policy", "camera=(), microphone=(), geolocation=()")
+                headers.setdefault("strict-transport-security", "max-age=31536000; includeSubDomains")
+                headers.setdefault(
+                    "content-security-policy",
+                    "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+                    "form-action 'self'; img-src 'self' data: blob:; "
+                    "font-src 'self' data: https://unpkg.com; "
+                    "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; "
+                    "connect-src 'self' ws: wss:; worker-src 'self' blob:",
+                )
+                if str(scope.get("path", "")).startswith("/health/"):
+                    headers["cache-control"] = "no-store"
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
 
 
 def _format_pacific_timestamp(value: str | None) -> str:
@@ -72,6 +118,16 @@ def _format_pacific_timestamp(value: str | None) -> str:
         return ""
     date_part = timestamp.strftime("%B %d, %Y").replace(" 0", " ")
     return f"{date_part} at {timestamp.strftime('%I:%M %p')} PT"
+
+
+def _format_pacific_date(value: str | None) -> str:
+    if not value:
+        return ""
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(PACIFIC)
+    except (TypeError, ValueError):
+        return ""
+    return timestamp.strftime("%B %d, %Y").replace(" 0", " ")
 
 
 def _store_status() -> RefreshStatus:
@@ -90,9 +146,17 @@ def _broadcast_status() -> None:
 async def _process_refresh_schedule() -> None:
     """Run one process-wide refresh and then repeat on the configured TTL."""
 
+    consecutive_failures = 0
     while True:
         await _run_refresh_background(force=True)
-        await asyncio.sleep(max(1, SETTINGS.cache_ttl_seconds))
+        if _store_status().state == "error":
+            consecutive_failures += 1
+            base_delay = min(3600, 60 * (2 ** min(consecutive_failures - 1, 6)))
+            delay = min(SETTINGS.cache_ttl_seconds, base_delay) * random.uniform(0.8, 1.2)
+        else:
+            consecutive_failures = 0
+            delay = SETTINGS.cache_ttl_seconds
+        await asyncio.sleep(max(1, delay))
 
 
 def _ensure_process_refresh() -> asyncio.Task[Any]:
@@ -189,8 +253,12 @@ def _status_payload(
         "timestamp": timestamp,
         "icon": icon,
         "aria_busy": running or bundle is None,
-        "button_disabled": running,
-        "button_label": "Retry source" if failed or (bundle is None and not running) else "Refresh source",
+        "button_disabled": running or not MANUAL_REFRESH_ENABLED,
+        "button_label": (
+            "Refresh managed automatically"
+            if not MANUAL_REFRESH_ENABLED
+            else ("Retry source" if failed or (bundle is None and not running) else "Refresh source")
+        ),
     }
 
 
@@ -265,7 +333,7 @@ def _application_ui(_request: Any) -> Any:
         ui.tags.link(rel="stylesheet", href="city.css?v=20260806c"),
         ui.tags.script(src="app.js?v=20260806b", defer=True),
         ui.div(
-            city_header_ui(nav_input_id="app_view"),
+            city_header_ui(nav_input_id="app_view", app_home=SETTINGS.app_base_path),
             ui.tags.main(
                 ui.div(
                     ui.div(
@@ -370,6 +438,25 @@ def _server(input: Inputs, output: Outputs, session: Session) -> None:
     restored_inputs: dict[str, Any] = {}
     restored_overview_state: dict[str, Any] = {}
     access = ACCESS_PROVIDER.current()
+
+    @output
+    @render.text
+    def footer_snapshot_meta() -> str:
+        current = snapshot()
+        snapshot_date = _format_pacific_date(current.data_updated_at if current is not None else None)
+        return f"DATA SNAPSHOT · {snapshot_date}" if snapshot_date else "DATA SNAPSHOT · UNAVAILABLE"
+
+    @output
+    @render.text
+    def footer_refresh_meta() -> str:
+        state = str(refresh_state().get("status") or "")
+        if state == "running":
+            return "CHECKING FOR UPDATES"
+        if state in {"error", "stale"}:
+            return "LAST UPDATE CHECK FAILED"
+        hours = SETTINGS.cache_ttl_seconds / 3600
+        interval = f"{hours:g} HOURS" if hours != 1 else "1 HOUR"
+        return f"UPDATE CHECK EVERY {interval}"
 
     def _send_status_message(payload: dict[str, Any]) -> None:
         try:
@@ -552,6 +639,15 @@ def _server(input: Inputs, output: Outputs, session: Session) -> None:
     @reactive.effect
     @reactive.event(input.retry_source)
     def _manual_refresh() -> None:
+        global _LAST_MANUAL_REFRESH_AT
+        if not MANUAL_REFRESH_ENABLED:
+            LOG.warning("manual source refresh ignored because it is disabled")
+            return
+        now = time.monotonic()
+        if now - _LAST_MANUAL_REFRESH_AT < SETTINGS.manual_refresh_cooldown_seconds:
+            LOG.warning("manual source refresh ignored during cooldown")
+            return
+        _LAST_MANUAL_REFRESH_AT = now
         _start_coordinated_refresh(force=True)
 
     @reactive.effect
@@ -703,4 +799,64 @@ app = App(
         "/": PROJECT_ROOT / "www",
     },
     bookmark_store="url",
+)
+
+
+async def _health_live(_request: Any) -> JSONResponse:
+    return JSONResponse({"status": "live"}, headers={"cache-control": "no-store"})
+
+
+async def _health_ready(_request: Any) -> JSONResponse:
+    bundle = SNAPSHOT_STORE.active_bundle
+    cache_writable = SETTINGS.cache_dir.exists() and os.access(SETTINGS.cache_dir, os.W_OK)
+    ready = bundle is not None and cache_writable
+    return JSONResponse(
+        {
+            "status": "ready" if ready else "not-ready",
+            "snapshot": "available" if bundle is not None else "unavailable",
+            "cache": "writable" if cache_writable else "unavailable",
+        },
+        status_code=200 if ready else 503,
+        headers={"cache-control": "no-store"},
+    )
+
+
+@asynccontextmanager
+async def _platform_lifespan(_platform: Starlette) -> Any:
+    # Starlette does not automatically run the lifespan of a mounted ASGI app.
+    # Preserve Shiny's lifecycle before starting Atlas background work.
+    async with _shiny_routes.router.lifespan_context(_shiny_routes):
+        startup_task = _ensure_process_refresh()
+        try:
+            yield
+        finally:
+            scheduled = _PROCESS_REFRESH_TASK
+            if scheduled is not None and not scheduled.done():
+                scheduled.cancel()
+                with suppress(asyncio.CancelledError):
+                    await scheduled
+            if startup_task is not scheduled and not startup_task.done():
+                startup_task.cancel()
+            await SNAPSHOT_STORE.aclose()
+
+
+_shiny_routes = app.starlette_app
+_base_mount = SETTINGS.app_base_path.rstrip("/") or "/"
+_platform_routes: list[Any] = [
+    Route("/health/live", _health_live, methods=["GET"]),
+    Route("/health/ready", _health_ready, methods=["GET"]),
+]
+if _base_mount != "/":
+    _platform_routes.append(
+        Route("/", lambda _request: RedirectResponse(SETTINGS.app_base_path, status_code=307))
+    )
+_platform_routes.append(Mount(_base_mount, app=_shiny_routes))
+app.starlette_app = Starlette(
+    routes=_platform_routes,
+    middleware=[
+        Middleware(TrustedHostMiddleware, allowed_hosts=list(SETTINGS.allowed_hosts)),
+        Middleware(GZipMiddleware, minimum_size=1000),
+        Middleware(SecurityHeadersMiddleware),
+    ],
+    lifespan=_platform_lifespan,
 )

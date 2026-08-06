@@ -127,7 +127,12 @@ def test_bookmark_boolean_values_are_coerced_without_truthy_strings(
 
 @pytest.mark.parametrize(
     ("raw_lens", "expected"),
-    [("net_position", "net_position"), ("source_records", "source_records"), ("unknown", "authority"), (None, "authority")],
+    [
+        ("net_position", "net_position"),
+        ("source_records", "source_records"),
+        ("unknown", "authority"),
+        (None, "authority"),
+    ],
 )
 def test_presentation_lens_is_bounded_and_legacy_bookmarks_default_to_authority(
     raw_lens: object, expected: str

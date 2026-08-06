@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import pandas as pd
@@ -29,6 +30,23 @@ def finite_number(value: Any, field: str, row_number: int) -> float:
     if not math.isfinite(number):
         raise DataValidationError(f"Approved Budgets row {row_number} has invalid {field}")
     return number
+
+
+def positive_whole_number(value: Any, field: str, row_number: int) -> int:
+    """Return a positive integer without silently truncating source values."""
+
+    if isinstance(value, bool):
+        raise DataValidationError(f"Approved Budgets row {row_number} has invalid {field}")
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise DataValidationError(f"Approved Budgets row {row_number} has invalid {field}") from exc
+    if not number.is_finite() or number != number.to_integral_value() or number <= 0:
+        raise DataValidationError(f"Approved Budgets row {row_number} has invalid {field}")
+    integer = int(number)
+    if integer > 2**63 - 1:
+        raise DataValidationError(f"Approved Budgets row {row_number} has invalid {field}")
+    return integer
 
 
 def normalize_flow(value: Any, row_number: int) -> Flow:
@@ -63,14 +81,14 @@ def normalize_feature(feature: Mapping[str, Any], row_number: int = 1) -> dict[s
     object_id = attributes.get("ObjectId", attributes.get("OBJECTID", feature.get("id")))
     category = attributes.get("CATEGORY", attributes.get("Category"))
     return {
-        "fiscal_year": int(finite_number(attributes.get("Fiscal_Year"), "Fiscal_Year", row_number)),
+        "fiscal_year": positive_whole_number(attributes.get("Fiscal_Year"), "Fiscal_Year", row_number),
         "department": clean_text(attributes.get("Department")),
         "fund": clean_text(attributes.get("Fund")),
         "category": clean_text(category),
         "amount": finite_number(attributes.get("Amount"), "Amount", row_number),
         "expense_revenue": normalize_flow(attributes.get("ExpenseRevenue"), row_number),
         "fund_category": clean_text(attributes.get("Fund_Category")),
-        "object_id": int(finite_number(object_id, "ObjectId", row_number)),
+        "object_id": positive_whole_number(object_id, "ObjectId", row_number),
     }
 
 

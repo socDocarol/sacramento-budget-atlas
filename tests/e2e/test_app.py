@@ -175,6 +175,7 @@ def test_overview_bookmark_round_trip_restores_exact_shared_state(page: Page, li
         1, timeout=20_000
     )
     page.locator("#overview-workspace_fund").select_option(label="General Fund")
+    expect(page.locator(".city-workspace-breadcrumb")).to_contain_text("General Fund", timeout=20_000)
     expect(page.locator('#overview-workspace_category option[value="Services & Supplies"]')).to_have_count(
         1, timeout=20_000
     )
@@ -321,7 +322,7 @@ def test_changed_row_reopens_after_close_and_browser_back_closes_drawer(
     page.go_back()
     expect(page).to_have_url(re.compile(r"#overview$"), timeout=20_000)
     expect(drawer).to_be_hidden(timeout=20_000)
-    expect(page.get_by_role("heading", name="Sacramento's approved budget")).to_be_visible(timeout=20_000)
+    expect(page.get_by_role("heading", name="Sacramento Budget Dashboard")).to_be_visible(timeout=20_000)
 
 
 def test_bookmark_restored_open_drawer_closes_to_stable_focus_fallback(

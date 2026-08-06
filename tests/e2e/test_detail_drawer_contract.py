@@ -447,7 +447,10 @@ def test_homepage_lenses_match_card_values_and_reset_on_ordinary_selection(
         wait_drawer_values(page)
         expect(page.locator(SHELL)).to_have_attribute("data-detail-lens", lens)
         expect(page.locator(f"{DRAWER} .city-detail-drawer__title")).to_have_text(title)
-        assert page.locator(f"{DRAWER} .city-detail-metrics .city-stat-card__value").first.inner_text() == card_value
+        assert (
+            page.locator(f"{DRAWER} .city-detail-metrics .city-stat-card__value").first.inner_text()
+            == card_value
+        )
         return card_value
 
     revenue = open_card(0, "authority", "Citywide approved revenue")
@@ -483,7 +486,9 @@ def test_homepage_lenses_match_card_values_and_reset_on_ordinary_selection(
         wait_drawer_values(page)
         expect(page.locator(SHELL)).to_have_attribute("data-detail-lens", "authority")
         assert "net position" not in page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text().lower()
-        assert "source records" not in page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text().lower()
+        assert (
+            "source records" not in page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text().lower()
+        )
         close_drawer(page)
 
 
@@ -669,7 +674,12 @@ def test_close_backdrop_history_refresh_and_legacy_bookmarks_preserve_contract(
         legacy_selection.pop("lens", None)
         legacy_query = urlencode(
             [
-                (key, json.dumps(legacy_selection, separators=(",", ":")) if key == "overview_selection" else value)
+                (
+                    key,
+                    json.dumps(legacy_selection, separators=(",", ":"))
+                    if key == "overview_selection"
+                    else value,
+                )
                 for key, value in pairs
             ]
         )
@@ -694,11 +704,12 @@ def test_close_backdrop_history_refresh_and_legacy_bookmarks_preserve_contract(
         history.close()
 
 
-def test_lens_and_hierarchy_journeys_have_no_console_errors(
-    page: Page, live_server_url: str
-) -> None:
+def test_lens_and_hierarchy_journeys_have_no_console_errors(page: Page, live_server_url: str) -> None:
     errors: list[str] = []
-    page.on("console", lambda message: errors.append(f"console: {message.text}") if message.type == "error" else None)
+    page.on(
+        "console",
+        lambda message: errors.append(f"console: {message.text}") if message.type == "error" else None,
+    )
     page.on("pageerror", lambda error: errors.append(f"page: {error}"))
     ready(page, live_server_url)
 

@@ -37,6 +37,9 @@ class FakeRepository:
             cache_ttl_seconds=0,
             log_level="INFO",
             app_base_path="/",
+            allowed_hosts=("testserver",),
+            manual_refresh_enabled=False,
+            manual_refresh_cooldown_seconds=300,
         )
         self.bundle_store = bundle_store
         self.calls = 0
