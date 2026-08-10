@@ -103,3 +103,44 @@ pass all of the following:
 
 The workflow builds and scans only. It does not authenticate to Azure, push an
 image, alter infrastructure, or deploy the application.
+
+## Experimental Azure Container Apps topology
+
+The internal demo phase uses Azure Container Apps Consumption instead of the
+always-on App Service topology above. This is a time-bounded cost optimization,
+not a replacement for the production operating contract.
+
+- Deploy in the `Microsoft Azure Enterprise - APPS` subscription and `westus2`
+  region, in a resource group dedicated to this experiment.
+- Allocate `0.5` vCPU and initially `1Gi` memory. Increase to `2Gi` before
+  deployment if a clean ArcGIS refresh exceeds `768 MiB`, fails under the
+  `1Gi` limit, or takes longer than five minutes to become ready.
+- Configure `minReplicas=0` and `maxReplicas=1`. The app may scale to zero but
+  must never scale beyond one replica while Shiny sessions and refresh state
+  remain process-local.
+- Use single revision mode, external HTTP ingress on target port `8000`, HTTPS
+  only, and sticky sessions.
+- Use `/health/live` for startup and liveness. Use `/health/ready` for traffic
+  readiness after the prepared snapshot is valid.
+- Keep `BUDGET_CACHE_DIR=/var/cache/sacramento-budget` on ephemeral container
+  storage for the first month. Expect every cold replacement to refresh from
+  ArcGIS and warm the app before scheduled demonstrations.
+- Require Microsoft Entra authentication and explicit enterprise-application
+  assignment to the `Budget Atlas Demo Users` group. Do not allow anonymous
+  application content.
+- Pull immutable image digests from a private Basic ACR using a user-assigned
+  managed identity. Keep registry admin and anonymous pull disabled.
+- Authenticate GitHub Actions to Azure with OIDC. Do not store a publish
+  profile, Azure client secret, registry password, or personal access token.
+- Retain Log Analytics data for 30 days. Do not add Application Insights,
+  Azure Files, Key Vault, private networking, Front Door, Application Gateway,
+  Dapr, or a dedicated workload profile during this experiment.
+- Keep `BUDGET_MANUAL_REFRESH_ENABLED=0`, leave `SHINY_TESTMODE` unset, and set
+  `APP_ALLOWED_HOSTS` to the exact Container Apps default hostname.
+- Warm and smoke-test the app 30 minutes before a demonstration. Allow it to
+  scale to zero after traffic stops.
+- Tag every resource with `expiresOn=2026-09-30` and review removal, extension,
+  or production redesign on that date.
+
+The implementation plan and cost-control gates are documented in
+[`docs/superpowers/plans/2026-08-09-azure-container-apps-demo.md`](superpowers/plans/2026-08-09-azure-container-apps-demo.md).
