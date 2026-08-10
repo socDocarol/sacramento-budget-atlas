@@ -56,6 +56,12 @@ FLOW_VALUES = {
 }
 
 
+def format_overview_currency(value: Any) -> str:
+    """Format every visible Overview amount as full comma-separated dollars."""
+
+    return format_currency(value)
+
+
 @dataclass(frozen=True, slots=True)
 class OverviewController:
     """Imperative bridge used by other views to open integrated detail."""
@@ -759,11 +765,11 @@ def overview_server(
                         aria_hidden="true",
                     ),
                     ui.span(
-                        format_currency(change, compact=True),
+                        format_overview_currency(change),
                         class_="city-movement__value tabular",
                     ),
                     ui.span(
-                        f"FY{current.year} {format_currency(row.current, compact=True)}",
+                        f"FY{current.year} {format_overview_currency(row.current)}",
                         class_="city-movement__context",
                     ),
                     type="button",
@@ -912,7 +918,7 @@ def overview_server(
                 ui.tags.button(
                     ui.span(label, class_="city-stat-card__label"),
                     ui.span(
-                        format_currency(row.amount, compact=True),
+                        format_overview_currency(row.amount),
                         class_="city-stat-card__value tabular",
                     ),
                     ui.span(detail, class_="city-stat-card__detail"),
@@ -1082,19 +1088,19 @@ def overview_server(
         return ui.div(
             stat_card(
                 f"FY{current.year}",
-                format_currency(current_total, compact=True),
+                format_overview_currency(current_total),
                 _hierarchy_label(current),
                 tone="cobalt",
             ),
             stat_card(
                 f"FY{current.compare_year}",
-                format_currency(prior_total, compact=True),
+                format_overview_currency(prior_total),
                 "Comparison amount",
                 tone="sky",
             ),
             stat_card(
                 "Change",
-                format_currency(change, compact=True),
+                format_overview_currency(change),
                 format_percent(percent) if percent is not None else "Percentage unavailable",
                 tone="green" if change >= 0 else "gold",
             ),
@@ -1190,12 +1196,12 @@ def overview_server(
             label = str(values[dimension] or "Unspecified")
             amount = float(values["amount"])
             share = amount / total if total else 0
-            movement_label = f"{label}: {format_currency(amount, compact=True)} ({share:.1%})"
+            movement_label = f"{label}: {format_overview_currency(amount)} ({share:.1%})"
             buttons.append(
                 ui.tags.button(
                     ui.span(label, class_="city-movement__label"),
                     ui.span(
-                        f"{format_currency(amount, compact=True)} · {share:.1%}",
+                        f"{format_overview_currency(amount)} · {share:.1%}",
                         class_="city-movement__value tabular",
                     ),
                     type="button",
