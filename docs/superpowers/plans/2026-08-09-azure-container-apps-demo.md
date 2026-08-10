@@ -279,41 +279,39 @@ git add infra/README.md scripts/Test-AzureDemoPrerequisites.ps1 docs/azure-deplo
 git commit -m "docs: specify Azure Container Apps demo preflight"
 ```
 
-### Task 2: Prove the 0.5-vCPU/1-GiB resource profile
+### Task 2: Prove the 0.5-vCPU/1-GiB resource profile on GitHub Actions
 
 **Files:**
 - Create: `docs/azure-container-apps-resource-profile.md`
-- Test: `tests/test_live_contract.py`
+- Modify: `.github/workflows/ci.yml`
+- Test: GitHub Actions job `Azure resource profile (0.5 CPU / 1 GiB)`
 
 **Interfaces:**
 - Consumes: the production Dockerfile and public ArcGIS source.
 - Produces: the final memory value (`1Gi` or `2Gi`) used by `infra/app.bicep`.
 
-- [ ] **Step 1: Build the exact production image**
+- [ ] **Step 1: Add the constrained profile job**
 
-```powershell
-docker build --pull --tag sacramento-budget-atlas:azure-profile .
-```
+Extend the existing CI workflow with an opt-in resource-profile job. Run it automatically on `feat/azure-container-apps-demo` and via a boolean `workflow_dispatch` input. Build the exact production Dockerfile once on `ubuntu-24.04`.
 
-Expected: build succeeds from the pinned Dockerfile.
+Expected: the standard CI gates and resource-profile job use the same commit and pinned Dockerfile.
 
-- [ ] **Step 2: Run a constrained clean-cache refresh**
+- [ ] **Step 2: Run a constrained clean-cache refresh on the runner**
 
-Create a new Docker volume named `budget-atlas-azure-profile` and run:
+Run the built image with:
 
-```powershell
-docker volume create budget-atlas-azure-profile
-docker run --rm --name budget-atlas-azure-profile `
-  --cpus 0.5 --memory 1g --memory-swap 1g `
-  --publish 127.0.0.1:18000:8000 `
-  --volume budget-atlas-azure-profile:/var/cache/sacramento-budget `
-  --env BUDGET_BACKGROUND_REFRESH_ENABLED=1 `
-  --env BUDGET_MANUAL_REFRESH_ENABLED=0 `
-  --env APP_ALLOWED_HOSTS=localhost,127.0.0.1 `
+```bash
+docker run --detach \
+  --cpus 0.5 --memory 1g --memory-swap 1g \
+  --publish 127.0.0.1:18000:8000 \
+  --volume budget-atlas-azure-profile:/var/cache/sacramento-budget \
+  --env BUDGET_BACKGROUND_REFRESH_ENABLED=1 \
+  --env BUDGET_MANUAL_REFRESH_ENABLED=0 \
+  --env APP_ALLOWED_HOSTS=localhost,127.0.0.1 \
   sacramento-budget-atlas:azure-profile
 ```
 
-In a second shell, poll `http://127.0.0.1:18000/health/ready` and record the time to first `200`. Use `docker stats --no-stream budget-atlas-azure-profile` every five seconds and record peak memory.
+Poll `http://127.0.0.1:18000/health/ready` and sample `docker stats` every five seconds. Upload the measurements, readiness response, and container log as a 14-day workflow artifact even when the gate fails.
 
 - [ ] **Step 3: Apply the sizing gate**
 
@@ -326,13 +324,14 @@ Use `1Gi` only when all conditions pass:
 
 If any condition fails, set the planned Container App memory to `2Gi` while keeping CPU at `0.5` and document the observed peak and readiness time.
 
-- [ ] **Step 4: Run the live source contract**
+- [ ] **Step 4: Push the branch and inspect the observed run**
 
 ```powershell
-uv run --frozen pytest -p no:cacheprovider -m live tests/test_live_contract.py
+git push --set-upstream origin feat/azure-container-apps-demo
+gh run list --branch feat/azure-container-apps-demo --workflow CI
 ```
 
-Expected: PASS against the configured public ArcGIS layer.
+Expected: Python quality, container security, and the constrained resource-profile job all pass. Download and inspect the `azure-container-resource-profile` artifact.
 
 - [ ] **Step 5: Record and commit the evidence**
 
