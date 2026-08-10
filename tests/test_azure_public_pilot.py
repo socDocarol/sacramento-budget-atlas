@@ -33,10 +33,6 @@ def test_identity_bootstrap_reuses_shared_dba_platform() -> None:
     assert "registryResourceGroupName = 'Databricks'" in parameters
     assert "registryName = 'saccitydaoregistry'" in parameters
     assert "containerAppsEnvironmentName = 'saccity-shared-env'" in parameters
-    assert (
-        "githubFederatedSubject = 'repo:socDocarol/sacramento-budget-atlas:environment:azure-public-pilot'"
-        in parameters
-    )
 
     forbidden_created_types = (
         "Microsoft.Resources/resourceGroups@2025-04-01' = {",
@@ -46,6 +42,16 @@ def test_identity_bootstrap_reuses_shared_dba_platform() -> None:
     )
     for resource_type in forbidden_created_types:
         assert resource_type not in deployment
+
+
+def test_github_federated_subject_uses_immutable_repository_ids() -> None:
+    """A name-only subject cannot match GitHub's immutable OIDC token for this repository."""
+    parameters = _read("infra/parameters/public-pilot.bicepparam")
+
+    assert (
+        "githubFederatedSubject = 'repo:socDocarol@294304371/"
+        "sacramento-budget-atlas@1316607344:environment:azure-public-pilot'" in parameters
+    )
 
 
 def test_identity_bootstrap_scopes_registry_roles_to_separate_identities() -> None:

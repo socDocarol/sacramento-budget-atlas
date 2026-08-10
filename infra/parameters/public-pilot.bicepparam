@@ -7,7 +7,7 @@ param registryResourceGroupName = 'Databricks'
 param registryName = 'saccitydaoregistry'
 param runtimeIdentityName = 'id-sac-budget-atlas-runtime-public-pilot'
 param githubIdentityName = 'id-sac-budget-atlas-github-public-pilot'
-param githubFederatedSubject = 'repo:socDocarol/sacramento-budget-atlas:environment:azure-public-pilot'
+param githubFederatedSubject = 'repo:socDocarol@294304371/sacramento-budget-atlas@1316607344:environment:azure-public-pilot'
 param tags = {
   workload: 'SacramentoBudgetAtlas'
   environment: 'public-pilot'
