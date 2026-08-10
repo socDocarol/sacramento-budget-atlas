@@ -35,7 +35,7 @@ class OverviewSelectionState:
 
     year: int | None = None
     compare_year: int | None = None
-    flow: str = "all"
+    flow: str = "expense"
     fund_scope: str = "all_funds"
     department: str | None = None
     fund: str | None = None
@@ -141,8 +141,7 @@ def sanitize_overview_selection(
     )
 
     available_years = sorted({int(item) for item in years}, reverse=True)
-    default_year = available_years[0] if available_years else None
-    default_compare = available_years[1] if len(available_years) > 1 else default_year
+    default_year = 2027 if 2027 in available_years else (available_years[0] if available_years else None)
 
     def year_value(key: str, default: int | None) -> int | None:
         try:
@@ -151,14 +150,16 @@ def sanitize_overview_selection(
             return default
         return candidate if candidate in available_years else default
 
+    selected_year = year_value("year", default_year)
+    flow = _valid_or_default(raw.get("flow"), VALID_FLOWS, "expense")
     scope = str(raw.get("fund_scope") or "all_funds")
     if scope == "all":
         scope = "all_funds"
 
     return OverviewSelectionState(
-        year=year_value("year", default_year),
-        compare_year=year_value("compare_year", default_compare),
-        flow=_valid_or_default(raw.get("flow"), VALID_FLOWS, "all"),
+        year=selected_year,
+        compare_year=selected_year - 1 if selected_year is not None else None,
+        flow="expense" if flow == "all" else flow,
         fund_scope=_valid_or_default(scope, VALID_SCOPES, "all_funds"),
         department=_optional_dimension(raw.get("department"), departments),
         fund=_optional_dimension(raw.get("fund"), funds),
