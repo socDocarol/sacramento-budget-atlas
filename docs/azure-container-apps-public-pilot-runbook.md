@@ -82,6 +82,12 @@ reviewer. Set its `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and
 output. These are identifiers, not passwords. Do not create an Azure client
 secret, publish profile, registry password, or personal access token.
 
+GitHub.com repositories created after July 15, 2026 use an immutable OIDC
+subject containing the owner and repository numeric IDs. Keep
+`githubFederatedSubject` in `infra/parameters/public-pilot.bicepparam` aligned
+with the subject printed by `azure/login`; the older name-only form will fail
+Azure token exchange with `AADSTS700213`.
+
 ## 4. Build, scan, and push the first immutable image
 
 Run `.github/workflows/deploy-azure-public-pilot.yml` with `deploy=false` for
