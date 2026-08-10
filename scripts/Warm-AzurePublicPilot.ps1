@@ -47,6 +47,14 @@ function Invoke-WebProbe {
     }
 }
 
+function New-PythonHttpStatusCommand {
+    param([Parameter(Mandatory = $true)][string]$Uri)
+
+    $uriBytes = [System.Text.Encoding]::UTF8.GetBytes($Uri) -join ','
+    $moduleBytes = '117,114,108,108,105,98,46,114,101,113,117,101,115,116'
+    return "python -c print(__import__(bytes([$moduleBytes]).decode()).request.urlopen(bytes([$uriBytes]).decode(),timeout=5).status)"
+}
+
 $startedAt = Get-Date
 $deadline = $startedAt.AddSeconds($TimeoutSeconds)
 $app = Invoke-AzJson @(
@@ -70,13 +78,21 @@ while ((Get-Date) -lt $deadline) {
     )
     $replica = @($replicas)[0]
     if ($null -ne $replica) {
-        $readyRaw = & $AzCommand containerapp exec `
-            --name $ContainerAppName `
-            --resource-group $ResourceGroupName `
-            --revision $revisionName `
-            --replica $replica.name `
-            --command "python -c `"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5).status)`"" 2>&1
-        if ($LASTEXITCODE -eq 0 -and ($readyRaw -join "`n") -match '(?m)^\s*200\s*$') {
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $readyRaw = & $AzCommand containerapp exec `
+                --name $ContainerAppName `
+                --resource-group $ResourceGroupName `
+                --revision $revisionName `
+                --replica $replica.name `
+                --command (New-PythonHttpStatusCommand -Uri 'http://127.0.0.1:8000/health/ready') 2>&1
+            $execExitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+        if ($execExitCode -eq 0 -and ($readyRaw -join "`n") -match '(?m)^\s*200\s*$') {
             $elapsed = [math]::Round(((Get-Date) - $startedAt).TotalSeconds, 1)
             Write-Output "Azure public pilot is ready at https://$fqdn/ after $elapsed seconds."
             return
