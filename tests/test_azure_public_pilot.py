@@ -68,3 +68,66 @@ def test_public_pilot_parameters_do_not_embed_account_identifiers() -> None:
     assert "5307de98-bb54-4d1e-9ccc-d1cafbe8e3e1" not in parameters
     assert "ba834b27-3286-40b8-a78c-cb233b85bfdb" not in parameters
     assert "expiresOn: '2026-09-30'" in parameters
+
+
+def test_container_app_is_anonymous_on_the_consumption_profile() -> None:
+    """Retaining Entra auth or omitting the profile would implement the wrong pilot route."""
+    app = _read("infra/app.bicep")
+    parameters = _read("infra/parameters/app-public-pilot.bicepparam")
+    combined = "\n".join((app, parameters)).lower()
+
+    assert "param containerAppName string = 'ca-sac-budget-atlas-public-pilot'" in app
+    assert "workloadProfileName: 'Consumption'" in app
+    assert "activeRevisionsMode: 'Single'" in app
+    assert "allowInsecure: false" in app
+    assert "affinity: 'sticky'" in app
+    assert "minReplicas: 0" in app
+    assert "maxReplicas: 1" in app
+    assert "BUDGET_MANUAL_REFRESH_ENABLED" in app
+    assert "value: '0'" in app
+    assert "authconfigs" not in combined
+    assert "entraclient" not in combined
+    assert "clientsecret" not in combined
+    assert "secrets:" not in combined
+
+
+def test_container_app_uses_existing_shared_resources_and_runtime_identity() -> None:
+    """Creating or password-authenticating shared dependencies would bypass the hardened boundary."""
+    app = _read("infra/app.bicep")
+    parameters = _read("infra/parameters/app-public-pilot.bicepparam")
+
+    assert "resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' existing" in app
+    assert "resource registry 'Microsoft.ContainerRegistry/registries@2025-11-01' existing" in app
+    assert "scope: resourceGroup(registryResourceGroupName)" in app
+    assert "resource runtimeIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' existing" in app
+    assert "identity: runtimeIdentity.id" in app
+    assert "registryResourceGroupName = 'Databricks'" in parameters
+    assert "registryName = 'saccitydaoregistry'" in parameters
+    assert "containerAppsEnvironmentName = 'saccity-shared-env'" in parameters
+    assert "runtimeIdentityName = 'id-sac-budget-atlas-runtime-public-pilot'" in parameters
+
+
+def test_container_app_enforces_immutable_release_and_health_contract() -> None:
+    """A mutable image or missing probe could route traffic to an unverified revision."""
+    app = _read("infra/app.bicep")
+
+    assert "contains(imageDigestReference, '@sha256:')" in app
+    assert "type: 'Startup'" in app
+    assert "type: 'Liveness'" in app
+    assert "type: 'Readiness'" in app
+    assert app.count("path: '/health/live'") == 2
+    assert app.count("path: '/health/ready'") == 1
+    assert "name: 'APP_ALLOWED_HOSTS'" in app
+    assert "'${containerAppName}.${containerAppsEnvironment.properties.defaultDomain}'" in app
+
+
+def test_github_deployment_role_is_scoped_to_the_new_container_app() -> None:
+    """Resource-group deployment rights could permit changing Measure U or another shared app."""
+    app = _read("infra/app.bicep")
+    parameters = _read("infra/parameters/app-public-pilot.bicepparam")
+
+    assert "358470bc-b998-42bd-ab17-a7e34c199c0f" in app
+    assert "resource githubContainerAppsContributor" in app
+    assert "scope: containerApp" in app
+    assert "principalId: githubIdentity.properties.principalId" in app
+    assert "githubIdentityName = 'id-sac-budget-atlas-github-public-pilot'" in parameters

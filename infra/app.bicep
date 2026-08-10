@@ -1,16 +1,22 @@
 targetScope = 'resourceGroup'
 
-@description('Container Apps managed environment name from the foundation deployment.')
+@description('Existing shared Container Apps managed environment name in the deployment resource group.')
 param containerAppsEnvironmentName string
 
-@description('Azure Container Registry name from the foundation deployment.')
+@description('Resource group that owns the existing shared registry.')
+param registryResourceGroupName string
+
+@description('Existing shared Azure Container Registry name.')
 param registryName string
 
-@description('Runtime user-assigned identity name from the foundation deployment.')
+@description('Existing runtime user-assigned identity name.')
 param runtimeIdentityName string
 
+@description('Existing GitHub deployment user-assigned identity name.')
+param githubIdentityName string
+
 @description('Container App name.')
-param containerAppName string = 'ca-sac-budget-atlas-demo'
+param containerAppName string = 'ca-sac-budget-atlas-public-pilot'
 
 @description('Immutable ACR image reference, including its SHA-256 manifest digest.')
 param imageDigestReference string
@@ -20,14 +26,6 @@ param imageDigestReference string
 @maxLength(16)
 param revisionSuffix string
 
-@description('Microsoft Entra application client ID.')
-@minLength(1)
-param entraClientId string
-
-@description('Short-lived Microsoft Entra client secret used only by Container Apps authentication.')
-@secure()
-param entraClientSecret string
-
 @description('Memory allocation proven by the constrained resource profile.')
 @allowed([
   '1Gi'
@@ -35,9 +33,10 @@ param entraClientSecret string
 ])
 param containerMemory string = '1Gi'
 
-@description('Governance tags applied to the Container App.')
+@description('Governance tags applied only to the pilot Container App.')
 param tags object
 
+var containerAppsContributorRoleDefinitionId = '358470bc-b998-42bd-ab17-a7e34c199c0f'
 var revisionCommit = substring(revisionSuffix, 4, 12)
 var revisionCharacters = map(range(0, 12), index => substring(revisionCommit, index, 1))
 var revisionIsLowercaseHex = length(filter(
@@ -56,11 +55,16 @@ resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2025-01-01'
 }
 
 resource registry 'Microsoft.ContainerRegistry/registries@2025-11-01' existing = {
+  scope: resourceGroup(registryResourceGroupName)
   name: registryName
 }
 
 resource runtimeIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' existing = {
   name: runtimeIdentityName
+}
+
+resource githubIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' existing = {
+  name: githubIdentityName
 }
 
 resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
@@ -75,6 +79,7 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
   }
   properties: {
     managedEnvironmentId: containerAppsEnvironment.id
+    workloadProfileName: 'Consumption'
     configuration: {
       activeRevisionsMode: 'Single'
       maxInactiveRevisions: 5
@@ -91,12 +96,6 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
         {
           server: registry.properties.loginServer
           identity: runtimeIdentity.id
-        }
-      ]
-      secrets: [
-        {
-          name: 'entra-client-secret'
-          value: entraClientSecret
         }
       ]
     }
@@ -213,38 +212,18 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
   }
 }
 
-resource authentication 'Microsoft.App/containerApps/authConfigs@2025-01-01' = {
-  parent: containerApp
-  name: 'current'
+resource githubContainerAppsContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerApp.id, githubIdentity.id, containerAppsContributorRoleDefinitionId)
+  scope: containerApp
   properties: {
-    platform: {
-      enabled: true
-    }
-    globalValidation: {
-      unauthenticatedClientAction: 'RedirectToLoginPage'
-      redirectToProvider: 'azureactivedirectory'
-    }
-    httpSettings: {
-      requireHttps: true
-    }
-    identityProviders: {
-      azureActiveDirectory: {
-        enabled: true
-        registration: {
-          clientId: entraClientId
-          clientSecretSettingName: 'entra-client-secret'
-          openIdIssuer: '${environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0'
-        }
-      }
-    }
-    login: {
-      tokenStore: {
-        enabled: false
-      }
-    }
+    principalId: githubIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      containerAppsContributorRoleDefinitionId
+    )
   }
 }
 
 output containerAppFqdn string = containerApp.properties.configuration.ingress.fqdn
 output revisionName string = containerApp.properties.latestRevisionName
-output authenticationResourceId string = authentication.id
