@@ -199,7 +199,8 @@ template: {
 ### Authentication contract
 
 - `platform.enabled` is `true`.
-- `globalValidation.requireAuthentication` is `true`.
+- Authentication is required by setting `globalValidation.unauthenticatedClientAction` to
+  `RedirectToLoginPage`; the `2025-01-01` auth schema has no separate `requireAuthentication` property.
 - `globalValidation.unauthenticatedClientAction` is `RedirectToLoginPage`.
 - `globalValidation.redirectToProvider` is `azureactivedirectory`.
 - Microsoft Entra provider is enabled with issuer `https://login.microsoftonline.com/${tenant().tenantId}/v2.0` assembled in Bicep.
