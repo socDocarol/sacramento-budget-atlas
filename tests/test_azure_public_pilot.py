@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -24,13 +23,19 @@ def test_identity_bootstrap_reuses_shared_dba_platform() -> None:
 
     assert "scope: dbaResourceGroup" in main
     assert "scope: registryResourceGroup" in main
-    assert "resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' existing" in identities
+    assert (
+        "resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' existing"
+        in identities
+    )
     assert "resource registry 'Microsoft.ContainerRegistry/registries@" in registry_access
     assert "existing =" in registry_access
     assert "registryResourceGroupName = 'Databricks'" in parameters
     assert "registryName = 'saccitydaoregistry'" in parameters
     assert "containerAppsEnvironmentName = 'saccity-shared-env'" in parameters
-    assert "githubFederatedSubject = 'repo:socDocarol/sacramento-budget-atlas:environment:azure-public-pilot'" in parameters
+    assert (
+        "githubFederatedSubject = 'repo:socDocarol/sacramento-budget-atlas:environment:azure-public-pilot'"
+        in parameters
+    )
 
     forbidden_created_types = (
         "Microsoft.Resources/resourceGroups@2025-04-01' = {",
@@ -44,7 +49,6 @@ def test_identity_bootstrap_reuses_shared_dba_platform() -> None:
 
 def test_identity_bootstrap_scopes_registry_roles_to_separate_identities() -> None:
     """Combining runtime and deployment permissions would violate the pilot trust boundary."""
-    identities = _read("infra/modules/identities.bicep")
     registry_access = _read("infra/modules/registry-access.bicep")
     parameters = _read("infra/parameters/public-pilot.bicepparam")
 
@@ -99,7 +103,10 @@ def test_container_app_uses_existing_shared_resources_and_runtime_identity() -> 
     assert "resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' existing" in app
     assert "resource registry 'Microsoft.ContainerRegistry/registries@2025-11-01' existing" in app
     assert "scope: resourceGroup(registryResourceGroupName)" in app
-    assert "resource runtimeIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' existing" in app
+    assert (
+        "resource runtimeIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' existing"
+        in app
+    )
     assert "identity: runtimeIdentity.id" in app
     assert "registryResourceGroupName = 'Databricks'" in parameters
     assert "registryName = 'saccitydaoregistry'" in parameters
@@ -160,3 +167,40 @@ def test_resource_profile_runs_on_the_public_pilot_branch() -> None:
 
     assert "refs/heads/feat/azure-container-apps-public-pilot" in workflow
     assert "refs/heads/feat/azure-container-apps-demo" not in workflow
+
+
+def test_operator_docs_describe_shared_public_pilot_without_publishing_url() -> None:
+    """Stale authenticated-demo instructions could send an operator down the hardened route."""
+    infra_readme = _read("infra/README.md")
+    hardening = _read("docs/azure-deployment-hardening.md")
+    runbook = _read("docs/azure-container-apps-public-pilot-runbook.md")
+    combined = "\n".join((infra_readme, hardening, runbook))
+
+    assert "Microsoft Azure Enterprise - DBA" in combined
+    assert "saccity-shared-env" in combined
+    assert "saccitydaoregistry" in combined
+    assert "Consumption" in combined
+    assert "azure-public-pilot" in combined
+    assert "anonymous" in combined.lower()
+    assert "X-Robots-Tag" in combined
+    assert "Search exclusion is not access control" in combined
+    assert "2026-09-30" in combined
+    assert "Test-AzurePublicPilotPrerequisites.ps1" in combined
+    assert "Warm-AzurePublicPilot.ps1" in combined
+    assert "Test-AzurePublicPilotDeployment.ps1" in combined
+    assert "az deployment sub what-if" in runbook
+    assert "az deployment group what-if" in runbook
+    assert "Microsoft.Authorization/roleAssignments/write" in runbook
+    assert "known-good immutable digest" in runbook
+
+    stale_active_instructions = (
+        "Microsoft Azure Enterprise - APPS",
+        "rg-sac-budget-atlas-demo-wus2",
+        "sacbudgetatlasdemo",
+        "Budget Atlas Demo Users",
+        "Initialize-AzureDemoIdentity.ps1",
+    )
+    for stale_instruction in stale_active_instructions:
+        assert stale_instruction not in combined
+    assert "whitesmoke-a6bd011f" not in combined
+    assert "https://ca-sac-budget-atlas-public-pilot." not in combined

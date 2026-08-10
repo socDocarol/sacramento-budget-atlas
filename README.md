@@ -6,10 +6,11 @@ keeps the Budget pilot shell and adds a Civic Budget Story Studio opening stage
 that connects narrative context, filters, key figures, trends, and supporting
 records.
 
-**Status:** local demo and private-repository preparation only. This project is
-not a City-approved application, public release, official City communication,
-or production deployment. The City data owner and communications team have not
-approved the application, its interpretation, or its visual assets.
+**Status:** local proof of concept with a reviewed, time-limited Azure public-pilot
+deployment route. No Budget Atlas Azure resources are deployed by the repository
+state alone. This project is not a City-approved public release, official City
+communication, or production deployment. The City data owner and communications
+team have not approved the application, its interpretation, or its visual assets.
 
 ![Sacramento Budget Atlas Overview](docs/images/sacramento-budget-atlas-overview.png)
 
@@ -260,6 +261,9 @@ photography reuse terms.
   design choices.
 - [`docs/demo-status.md`](docs/demo-status.md) records the local visual smoke
   result and known limitations.
+- [`docs/azure-container-apps-public-pilot-route.md`](docs/azure-container-apps-public-pilot-route.md)
+  records the selected shared-DBA deployment route, and the adjacent runbook
+  defines preview, bootstrap, validation, rollback, and expiry procedures.
 - [`docs/source-certification.md`](docs/source-certification.md) records the
   copied source decision and verification boundary.
 - [`docs/prepared-bundle-performance-architecture.md`](docs/prepared-bundle-performance-architecture.md)

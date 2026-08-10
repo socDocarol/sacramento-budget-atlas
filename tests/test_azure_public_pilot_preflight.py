@@ -145,7 +145,12 @@ def test_preflight_verifies_shared_resources_without_mutating_them(tmp_path: Pat
     assert "subscription-id-must-not-print" not in result.stdout
     assert "tenant-id-must-not-print" not in result.stdout
     commands = (tmp_path / "commands.log").read_text(encoding="utf-8")
-    for mutation in ("provider register", "deployment create", "containerapp update", "role assignment create"):
+    for mutation in (
+        "provider register",
+        "deployment create",
+        "containerapp update",
+        "role assignment create",
+    ):
         assert mutation not in commands
 
 

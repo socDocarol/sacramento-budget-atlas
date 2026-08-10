@@ -2,9 +2,9 @@
 
 ## Decision
 
-Keep the demo's provisional Container Apps allocation at **0.5 vCPU and 1 GiB**. The automated
+Keep the public pilot's Container Apps allocation at **0.5 vCPU and 1 GiB**. The automated
 clean-cache gate passed with substantial memory headroom. Deployment approval remains contingent on the
-30-minute authenticated browser/WebSocket session in the post-deployment validation task.
+30-minute anonymous browser/WebSocket session in the post-deployment validation task.
 
 ## Evidence
 
@@ -30,8 +30,8 @@ the profile job and artifact upload had completed.
 - No OOM event: pass.
 - Peak below 768 MiB: pass, with 510.4 MiB of headroom to the gate.
 - Ready within five minutes: pass, at 14 seconds by the five-second sampler.
-- Thirty-minute authenticated browser/WebSocket session: pending until an Entra-protected Container App
-  exists; this is a pre-deployment acceptance gate, not evidence from the short runner profile.
+- Thirty-minute anonymous browser/WebSocket session: pending until the public-pilot Container App exists;
+  this is a post-deployment acceptance gate, not evidence from the short runner profile.
 
 The retained workflow artifact contains the complete five-second memory samples, readiness response, and
 container log. Generated cache data and runner logs are not committed to the repository.

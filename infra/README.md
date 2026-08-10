@@ -1,46 +1,53 @@
-# Azure demo infrastructure
+# Azure public-pilot infrastructure
 
-This directory will define the disposable Azure Container Apps deployment for
-internal team testing and scheduled demonstrations. The deployment targets the
-`Microsoft Azure Enterprise - APPS` subscription in `westus2`.
+This directory defines the time-limited, anonymously accessible Budget Atlas
+Container App in the `Microsoft Azure Enterprise - DBA` subscription. It
+reuses existing DBA platform resources and must not change their configuration.
 
-The first-month topology is intentionally small:
+## Shared dependencies
 
-- Azure Container Apps Consumption with zero to one replicas.
-- One `0.5` vCPU container with `1Gi` memory, subject to the resource-profile
-  gate in the implementation plan.
-- Basic Azure Container Registry with managed-identity pulls.
-- Log Analytics with 30-day retention.
-- Microsoft Entra authentication restricted to an assigned team group.
-- Ephemeral prepared-data cache and an explicit pre-demo warm-up.
+- Container Apps environment `saccity-shared-env` in resource group `DBA`.
+- Workload profile `Consumption` in that environment.
+- Container registry `saccitydaoregistry` in resource group `Databricks`.
+- Logging already configured on the shared environment.
 
-The complete design, ordered implementation steps, and verification matrix are
-in
-[`docs/superpowers/plans/2026-08-09-azure-container-apps-demo.md`](../docs/superpowers/plans/2026-08-09-azure-container-apps-demo.md).
+The templates do not create a resource group, Container Apps environment,
+registry, Log Analytics workspace, budget, or employee sign-in application.
+They create only two pilot identities, their federated and registry role
+assignments, one Budget Atlas Container App, and an app-scoped deployment role
+assignment.
+
+## Deployment boundaries
+
+`main.bicep` runs at subscription scope only because it coordinates modules in
+the two existing resource groups. The identities module creates separate
+runtime and GitHub OIDC identities in `DBA`; the registry-access module grants
+only `AcrPull` to the runtime identity and `AcrPush` to the GitHub identity on
+the shared registry.
+
+`app.bicep` runs in `DBA`. It creates the Budget Atlas app on Consumption and
+grants the GitHub identity Container Apps Contributor only on that app
+resource. It declares the environment, registry, and identities as existing.
+
+Visitor access is anonymous HTTPS. The app serves `robots.txt` and returns
+`X-Robots-Tag: noindex, nofollow`. Search exclusion is not access control; the
+URL remains public to anyone who obtains or discovers it.
 
 ## Read-only preflight
 
-Sign in and select the intended subscription:
-
 ```powershell
 az login --use-device-code
-az account set --subscription 'Microsoft Azure Enterprise - APPS'
-pwsh -NoProfile -File scripts/Test-AzureDemoPrerequisites.ps1
+az account set --subscription 'Microsoft Azure Enterprise - DBA'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Test-AzurePublicPilotPrerequisites.ps1
 ```
 
-On Windows systems without PowerShell 7, use Windows PowerShell:
+The preflight checks CLI/account context, exact shared resources, Consumption,
+logging, sibling Container Apps, and effective permissions. It does not
+register providers, create resources, assign roles, or deploy anything.
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Test-AzureDemoPrerequisites.ps1
-```
+## Validation and operations
 
-The preflight reads CLI version, account context, provider-registration state,
-effective deployment permissions, global ACR-name availability, and the target
-resource-group state. It does not register providers, create a resource group,
-assign roles, or deploy resources.
-
-As of 2026-08-09, the signed-in account can inspect the APPS subscription but
-does not have the deployment-validation and role-assignment permissions needed
-to provision this design. `Microsoft.App` is also not registered. Those are
-approval prerequisites, not actions performed by preflight.
-
+The complete preview, bootstrap, first-image deployment, smoke test, rollback,
+scale-to-zero, and expiry procedures are in
+[`docs/azure-container-apps-public-pilot-runbook.md`](../docs/azure-container-apps-public-pilot-runbook.md).
+Do not add the resolved pilot hostname or URL to repository documentation.

@@ -52,7 +52,7 @@ Expected: FAIL because the hardened templates still create dedicated platform re
 
 - [ ] **Step 3: Implement the identity-only bootstrap**
 
-Make `infra/main.bicep` target resource-group scope and call `modules/identities.bicep`. In the module, reference the shared registry across resource groups with `existing`, create `id-sac-budget-atlas-runtime-public-pilot` and `id-sac-budget-atlas-github-public-pilot`, create a federated credential with subject `repo:socDocarol/sacramento-budget-atlas:environment:azure-public-pilot`, grant runtime `AcrPull` and GitHub `AcrPush` only on the shared registry, and output exact existing-resource and identity values. The public-pilot parameter file must contain no subscription or tenant IDs and must apply pilot lifecycle tags only to owned identities.
+Make `infra/main.bicep` a subscription-scope orchestrator over the existing `DBA` and `Databricks` resource groups; subscription scope is required because deployable role assignments cannot cross a resource-group module boundary. Call `modules/identities.bicep` in `DBA` and `modules/registry-access.bicep` in `Databricks`. Create `id-sac-budget-atlas-runtime-public-pilot` and `id-sac-budget-atlas-github-public-pilot`, create a federated credential with subject `repo:socDocarol/sacramento-budget-atlas:environment:azure-public-pilot`, grant runtime `AcrPull` and GitHub `AcrPush` only on the shared registry, and output exact existing-resource and identity values. The public-pilot parameter file must contain no subscription or tenant IDs and must apply pilot lifecycle tags only to owned identities.
 
 - [ ] **Step 4: Run the focused tests**
 

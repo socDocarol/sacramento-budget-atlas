@@ -66,9 +66,7 @@ def _write_fakes(tmp_path: Path) -> tuple[Path, Path]:
             "template": app["properties"]["template"],
         },
     }
-    (tmp_path / "fixture.json").write_text(
-        json.dumps({"app": app, "revision": revision}), encoding="utf-8"
-    )
+    (tmp_path / "fixture.json").write_text(json.dumps({"app": app, "revision": revision}), encoding="utf-8")
 
     fake_az = tmp_path / "fake-az.ps1"
     fake_az.write_text(
