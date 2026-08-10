@@ -1,18 +1,18 @@
 targetScope = 'subscription'
 
-@description('Azure region for every demo resource.')
+@description('Azure region for the two pilot-owned managed identities.')
 param location string
 
-@description('Dedicated resource group for the disposable demo.')
-param resourceGroupName string
+@description('Existing resource group that owns the shared Container Apps environment.')
+param dbaResourceGroupName string
 
-@description('Log Analytics workspace name.')
-param logAnalyticsWorkspaceName string
-
-@description('Container Apps managed environment name.')
+@description('Existing shared Container Apps managed environment name.')
 param containerAppsEnvironmentName string
 
-@description('Globally unique Azure Container Registry name.')
+@description('Existing resource group that owns the shared registry.')
+param registryResourceGroupName string
+
+@description('Existing shared Azure Container Registry name.')
 param registryName string
 
 @description('User-assigned identity used by the Container App at runtime.')
@@ -24,23 +24,23 @@ param githubIdentityName string
 @description('GitHub Actions OIDC subject for the protected deployment environment.')
 param githubFederatedSubject string
 
-@description('Governance tags applied to all supported resources.')
+@description('Governance tags applied only to pilot-owned resources.')
 param tags object
 
-resource demoResourceGroup 'Microsoft.Resources/resourceGroups@2025-04-01' = {
-  name: resourceGroupName
-  location: location
-  tags: tags
+resource dbaResourceGroup 'Microsoft.Resources/resourceGroups@2025-04-01' existing = {
+  name: dbaResourceGroupName
 }
 
-module platform './modules/platform.bicep' = {
-  name: 'budget-atlas-demo-platform'
-  scope: demoResourceGroup
+resource registryResourceGroup 'Microsoft.Resources/resourceGroups@2025-04-01' existing = {
+  name: registryResourceGroupName
+}
+
+module identities './modules/identities.bicep' = {
+  name: 'budget-atlas-public-pilot-identities'
+  scope: dbaResourceGroup
   params: {
     location: location
-    logAnalyticsWorkspaceName: logAnalyticsWorkspaceName
     containerAppsEnvironmentName: containerAppsEnvironmentName
-    registryName: registryName
     runtimeIdentityName: runtimeIdentityName
     githubIdentityName: githubIdentityName
     githubFederatedSubject: githubFederatedSubject
@@ -48,10 +48,22 @@ module platform './modules/platform.bicep' = {
   }
 }
 
-output resourceGroupName string = demoResourceGroup.name
-output containerAppsEnvironmentId string = platform.outputs.containerAppsEnvironmentId
-output containerAppsDefaultDomain string = platform.outputs.containerAppsDefaultDomain
-output registryName string = platform.outputs.registryName
-output registryLoginServer string = platform.outputs.registryLoginServer
-output runtimeIdentityId string = platform.outputs.runtimeIdentityId
-output githubIdentityClientId string = platform.outputs.githubIdentityClientId
+module registryAccess './modules/registry-access.bicep' = {
+  name: 'budget-atlas-public-pilot-registry-access'
+  scope: registryResourceGroup
+  params: {
+    registryName: registryName
+    runtimeIdentityId: identities.outputs.runtimeIdentityId
+    runtimeIdentityPrincipalId: identities.outputs.runtimeIdentityPrincipalId
+    githubIdentityId: identities.outputs.githubIdentityId
+    githubIdentityPrincipalId: identities.outputs.githubIdentityPrincipalId
+  }
+}
+
+output containerAppsEnvironmentId string = identities.outputs.containerAppsEnvironmentId
+output containerAppsDefaultDomain string = identities.outputs.containerAppsDefaultDomain
+output registryId string = registryAccess.outputs.registryId
+output registryLoginServer string = registryAccess.outputs.registryLoginServer
+output runtimeIdentityId string = identities.outputs.runtimeIdentityId
+output githubIdentityClientId string = identities.outputs.githubIdentityClientId
+output githubIdentityPrincipalId string = identities.outputs.githubIdentityPrincipalId
