@@ -609,6 +609,30 @@
         padding: 1.2rem 0;
       }
 
+      .lane-flow {
+        display: grid;
+        grid-template-columns: 1fr;
+        overflow: visible;
+      }
+
+      .lane-step,
+      .arrow {
+        min-width: 0;
+      }
+
+      .arrow {
+        min-height: 2.4rem;
+      }
+
+      .arrow::after {
+        content: "  ↓";
+      }
+
+      #approval-map h2,
+      #approval-map .section-intro {
+        break-after: avoid;
+      }
+
       .card,
       .lane,
       .comparison-card,
