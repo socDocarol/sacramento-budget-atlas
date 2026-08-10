@@ -76,7 +76,7 @@ def budget_101_ui(id: str = "budget101") -> Any:
             ui.h2("A practical reading path", class_="city-section-title"),
             ui.tags.ol(
                 ui.tags.li("Set a fiscal year, comparison year, flow, and fund scope in Overview."),
-                ui.tags.li("Choose a KPI, movement, chart mark, or guided example."),
+                ui.tags.li("Choose a KPI, change, chart mark, or guided example."),
                 ui.tags.li("Read current, comparison, dollar-change, and record-count context."),
                 ui.tags.li("Expand analysis to move from department to fund to category."),
                 ui.tags.li("Inspect exact ObjectIds before sharing an interpretation."),

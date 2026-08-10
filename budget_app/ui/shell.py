@@ -14,7 +14,7 @@ CITY_SOURCE_URL = (
 
 PRIMARY_NAVIGATION: tuple[tuple[str, str, str], ...] = (
     ("overview", "Overview", "Overview of approved revenue and expenses"),
-    ("changed", "What Changed", "Compare fiscal years and movements"),
+    ("changed", "What Changed", "Compare fiscal years and changes"),
     ("explorer", "Explorer", "Filter and inspect supporting records"),
     ("lab", "Lab", "Exploratory scenario and statistical review tools"),
 )

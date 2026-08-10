@@ -36,7 +36,7 @@ def what_changed_ui(id: str = "changed") -> Any:
         page_intro(
             "What changed between years?",
             "Compare the same approved-budget scope across two fiscal years, rank the "
-            "largest department movements, and inspect exact values before drawing conclusions.",
+            "largest department changes, and inspect exact values before drawing conclusions.",
             eyebrow_text="Year-over-year comparison",
         ),
         ui.div(
@@ -65,7 +65,7 @@ def what_changed_ui(id: str = "changed") -> Any:
         ui.output_ui("state"),
         ui.div(
             chart_frame(
-                "Largest department movements",
+                "Largest department changes",
                 output_widget("chart", height="460px"),
                 ui.output_text("chart_summary"),
             ),
@@ -87,7 +87,7 @@ def what_changed_ui(id: str = "changed") -> Any:
                     ui.tags.li("Above zero means the approved amount increased."),
                     ui.tags.li("Below zero means the approved amount decreased."),
                     ui.tags.li(
-                        "A movement does not explain cause, service impact, performance, or actual spending."
+                        "A change does not explain cause, service impact, performance, or actual spending."
                     ),
                     class_="city-check-list",
                 ),
@@ -235,7 +235,7 @@ def what_changed_server(
                 tone="sky",
             ),
             stat_card(
-                "Net movement",
+                "Net change",
                 format_currency(change, compact=True),
                 format_percent(percent) if percent is not None else "Percentage unavailable",
                 tone="green" if change >= 0 else "gold",
@@ -311,10 +311,10 @@ def what_changed_server(
     def chart_summary() -> str:
         value = comparison()
         if value.empty:
-            return "Choose two fiscal years with records to see department movements."
+            return "Choose two fiscal years with records to see department changes."
         largest = value.iloc[0]
         return (
-            f"Largest absolute movement: {largest['department']}, "
+            f"Largest absolute change: {largest['department']}, "
             f"{format_currency(largest['change'])}. Select a bar for exact detail."
         )
 

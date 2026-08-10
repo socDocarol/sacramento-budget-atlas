@@ -34,6 +34,13 @@ from ..components import (
     stat_card,
     years,
 )
+from ..overview_metrics import (
+    OverviewMeasureSummary,
+    build_overview_measure_summary,
+    fixed_fy2027_expense_benchmark,
+    format_signed_currency,
+    format_signed_percent,
+)
 from ..shell import page_section
 from ..story_studio import story_studio_ui
 
@@ -127,18 +134,6 @@ def overview_ui(id: str = "overview") -> Any:
     analysis_slot = ui.div(
         ui.div(
             ui.div(
-                ui.input_select("year", "Fiscal year", {"latest": "Latest fiscal year"}),
-                class_="city-story-studio__live-control",
-            ),
-            ui.div(
-                ui.input_select("compare", "Compare with", {"prior": "Prior fiscal year"}),
-                class_="city-story-studio__live-control",
-            ),
-            ui.div(
-                ui.input_select("flow", "Budget flow", FLOW_LABELS),
-                class_="city-story-studio__live-control",
-            ),
-            ui.div(
                 ui.input_select(
                     "fund_scope",
                     "Fund scope",
@@ -148,21 +143,18 @@ def overview_ui(id: str = "overview") -> Any:
             ),
             ui.input_action_button(
                 "reset",
-                "Reset view",
+                ui.span("↺", aria_hidden="true"),
                 class_="city-button city-button--secondary city-story-studio__live-reset",
-            ),
-            ui.div(
-                "Values are approved budgets, not actual spending.",
-                class_="city-filter-note city-story-studio__live-note",
+                aria_label="Reset to FY2027 expenses and all funds",
+                title="Reset to FY2027 expenses and all funds",
             ),
             class_="city-controls city-context-bar city-story-studio__live-controls",
             aria_label="Overview filters",
         ),
-        ui.div(ui.output_ui("active_filters"), class_="city-story-studio__live-filters"),
         ui.div(ui.output_ui("kpis"), class_="city-overview-kpis city-story-studio__live-kpis"),
         ui.div(
             chart_frame(
-                "Budget movement by fiscal year",
+                "Budget change by fiscal year",
                 output_widget("trend_chart", height="232px"),
                 ui.div(
                     ui.output_text("trend_summary"),
@@ -179,11 +171,14 @@ def overview_ui(id: str = "overview") -> Any:
         class_="city-story-studio__analysis-slot",
     )
     return page_section(
-        story_studio_ui(analysis_slot=analysis_slot),
+        story_studio_ui(
+            analysis_slot=analysis_slot,
+            benchmark_value=ui.output_text("benchmark_value"),
+        ),
         ui.div(
             ui.div(
                 section_header(
-                    "Largest Changes",
+                    "Largest changes",
                     "Choose a department to open quick detail without leaving Overview.",
                 ),
                 ui.output_ui("movements"),
@@ -336,40 +331,13 @@ def overview_server(
 
         return _sanitize_state(selection())
 
-    context_choice_signature: tuple[int, ...] | None = None
-
-    def _context_input_value(name: str) -> str | None:
-        with reactive.isolate():
-            try:
-                return str(getattr(input, name)())
-            except (AttributeError, KeyError, TypeError):
-                return None
-
     def _update_context_inputs(value: OverviewSelectionState) -> None:
-        nonlocal context_choice_signature
-        available = _available_years()
-        choices = {str(item): str(item) for item in available}
-        choice_signature = tuple(available)
-        choices_changed = choice_signature != context_choice_signature
-        if choices and (choices_changed or _context_input_value("year") != str(value.year)):
-            ui.update_select("year", choices=choices, selected=str(value.year), session=session)
-        if choices and (choices_changed or _context_input_value("compare") != str(value.compare_year)):
-            ui.update_select(
-                "compare",
-                choices=choices,
-                selected=str(value.compare_year),
-                session=session,
-            )
-        if choices_changed or _context_input_value("flow") != value.flow:
-            ui.update_select("flow", selected=value.flow, session=session)
-        if choices_changed or _context_input_value("fund_scope") != value.fund_scope:
-            ui.update_select(
-                "fund_scope",
-                choices=FUND_SCOPE_LABELS,
-                selected=value.fund_scope,
-                session=session,
-            )
-        context_choice_signature = choice_signature
+        ui.update_select(
+            "fund_scope",
+            choices=FUND_SCOPE_LABELS,
+            selected=value.fund_scope,
+            session=session,
+        )
 
     def _set_value(value: Any, candidate: Any) -> None:
         if value.get() != candidate:
@@ -477,28 +445,25 @@ def overview_server(
         return candidate if candidate in _available_years() else fallback
 
     @reactive.effect
-    @reactive.event(input.year)
-    def _sync_year() -> None:
-        current = current_state()
-        _sync_context_value(year=_selected_year(input.year(), current.year))
-
-    @reactive.effect
-    @reactive.event(input.compare)
-    def _sync_compare_year() -> None:
-        current = current_state()
-        _sync_context_value(compare_year=_selected_year(input.compare(), current.compare_year))
-
-    @reactive.effect
-    @reactive.event(input.flow)
-    def _sync_flow() -> None:
-        value = str(input.flow())
-        _sync_context_value(flow=value if value in FLOW_LABELS else "all")
-
-    @reactive.effect
     @reactive.event(input.fund_scope)
     def _sync_fund_scope() -> None:
         value = str(input.fund_scope())
         _sync_context_value(fund_scope=value if value in FUND_SCOPE_LABELS else "all_funds")
+
+    @reactive.effect
+    @reactive.event(input.measure_request)
+    def _sync_measure_request() -> None:
+        requested = str(input.measure_request() or "")
+        if requested in {"revenue", "expense"}:
+            _sync_context_value(flow=requested)
+
+    @reactive.effect
+    @reactive.event(input.year_request)
+    def _sync_year_request() -> None:
+        payload = input.year_request()
+        requested = payload.get("year") if isinstance(payload, Mapping) else payload
+        current = current_state()
+        _sync_context_value(year=_selected_year(requested, current.year))
 
     @reactive.effect
     @reactive.event(input.selection_request)
@@ -620,26 +585,24 @@ def overview_server(
     def history_rows() -> pd.DataFrame:
         return _state_rows(frame(), current_state(), year=None)
 
-    def active_filters() -> Any:
+    def _measure_summary(flow: str) -> OverviewMeasureSummary | None:
         current = current_state()
-        chips = [
-            f"FY{current.year}",
-            f"compared with FY{current.compare_year}",
-            FLOW_LABELS[current.flow],
-            FUND_SCOPE_LABELS[current.fund_scope],
-        ]
-        if current.department:
-            chips.append(current.department)
-        if current.fund:
-            chips.append(current.fund)
-        if current.category:
-            chips.append(current.category)
-        return ui.div(
-            ui.span("Active context", class_="city-filter-chips__label"),
-            *(ui.span(label, class_="city-filter-chip") for label in chips),
-            class_="city-filter-chips",
-            aria_label="Active Overview filters",
+        if frame().empty or current.year is None:
+            return None
+        return build_overview_measure_summary(
+            frame(),
+            year=current.year,
+            flow=flow,  # type: ignore[arg-type]
+            fund_scope=current.fund_scope,
         )
+
+    def context_year() -> str:
+        current = current_state()
+        return f"FY{current.year}" if current.year is not None else "Fiscal year unavailable"
+
+    def benchmark_value() -> str:
+        data = frame()
+        return format_currency(fixed_fy2027_expense_benchmark(data)) if not data.empty else "Not available"
 
     def kpis() -> Any:
         data = frame()
@@ -649,82 +612,73 @@ def overview_server(
                 "Waiting for a budget snapshot",
                 "The Overview will populate after the source refresh completes.",
             )
-        current_bundle = bundle()
-        if current_bundle is not None:
-            totals = current_bundle.aggregate("totals_by_year_flow_scope")
-            totals = totals.loc[
-                totals["fiscal_year"].eq(current.year) & totals["fund_scope"].eq(current.fund_scope)
-            ]
-            revenue = float(totals.loc[totals["expense_revenue"].eq("Revenues"), "amount"].sum())
-            expense = float(totals.loc[totals["expense_revenue"].eq("Expenses"), "amount"].sum())
-            row_count = int(totals["line_items"].sum())
-        else:
-            revenue_rows = _state_rows(
-                data, current, year=current.year, include_hierarchy=False, flow="revenue"
-            )
-            expense_rows = _state_rows(
-                data, current, year=current.year, include_hierarchy=False, flow="expense"
-            )
-            all_rows = _state_rows(data, current, year=current.year, include_hierarchy=False, flow="all")
-            revenue = float(revenue_rows["amount"].sum())
-            expense = float(expense_rows["amount"].sum())
-            row_count = len(all_rows)
-        net = revenue - expense
+        revenue = _measure_summary("revenue")
+        expense = _measure_summary("expense")
+        selected = expense if current.flow == "expense" else revenue
+        assert revenue is not None
+        assert expense is not None
+        assert selected is not None
 
         def interactive_card(
             label: str,
-            value: str,
-            detail: str,
+            summary: OverviewMeasureSummary,
             *,
             flow: str,
             tone: str,
-            lens: str = "authority",
         ) -> Any:
             return ui.tags.button(
                 ui.span(label, class_="city-stat-card__label"),
-                ui.span(value, class_="city-stat-card__value tabular"),
-                ui.span(detail, class_="city-stat-card__detail"),
+                ui.span(format_currency(summary.current_amount), class_="city-stat-card__value tabular"),
+                ui.span(
+                    f"Viewing {label.lower()}" if current.flow == flow else f"View {label.lower()}",
+                    class_="city-stat-card__detail",
+                ),
                 type="button",
                 class_=f"city-stat-card city-stat-card--{tone} city-kpi-button",
-                data_overview_select="true",
-                data_selection_year=str(current.year),
-                data_selection_flow=flow,
-                data_selection_scope=current.fund_scope,
-                data_selection_department="",
-                data_selection_lens=lens,
-                aria_label=f"Open {label.lower()} detail for fiscal year {current.year}",
+                data_overview_measure=flow,
+                aria_pressed="true" if current.flow == flow else "false",
+                aria_label=f"View {label.lower()} for fiscal year {current.year}",
             )
 
+        if selected.change_amount is None:
+            change_detail = f"Comparison from FY{selected.prior_year} unavailable"
+            change_value = "Not available"
+        elif selected.prior_amount == 0:
+            change_detail = f"New in FY{selected.year}"
+            change_value = format_signed_currency(selected.change_amount)
+        else:
+            change_detail = format_signed_percent(selected.change_percent or 0)
+            change_value = format_signed_currency(selected.change_amount)
+        largest_detail = (
+            f"{format_currency(selected.largest_department_amount)} · "
+            f"{selected.largest_department_share:.1%} of FY{selected.year} {selected.measure.lower()}"
+            if selected.largest_department_amount is not None and selected.largest_department_share is not None
+            else "No department amount is available"
+        )
         return ui.div(
             interactive_card(
-                "Approved revenue",
-                format_currency(revenue, compact=True),
-                f"FY{current.year} revenue authority",
+                "Approved revenue estimate",
+                revenue,
                 flow="revenue",
                 tone="sky",
             ),
             interactive_card(
-                "Approved expenses",
-                format_currency(expense, compact=True),
-                f"FY{current.year} expense authority",
+                "Approved spending plan",
+                expense,
                 flow="expense",
                 tone="gold",
             ),
-            interactive_card(
-                "Net position",
-                format_currency(net, compact=True),
-                "Revenue less expenses",
-                flow="all",
-                tone="green" if net >= 0 else "gold",
-                lens="net_position",
+            stat_card(
+                f"Change from FY{selected.prior_year}",
+                change_value,
+                change_detail,
+                tone="green" if (selected.change_amount or 0) >= 0 else "gold",
             ),
-            interactive_card(
-                "Budget rows",
-                f"{row_count:,}",
-                "Exact source records in this context",
-                flow="all",
+            stat_card(
+                "Largest department",
+                selected.largest_department or "Not available",
+                largest_detail,
                 tone="cobalt",
-                lens="source_records",
             ),
             class_="city-grid city-grid--4",
         )
@@ -779,7 +733,7 @@ def overview_server(
         current = current_state()
         data = _movement_data()
         if data.empty:
-            return empty_state("No department movements are available")
+            return empty_state("No department changes are available")
         max_change = float(data["change"].abs().max())
         cards = []
         for row in data.itertuples(index=False):
@@ -830,29 +784,11 @@ def overview_server(
         if current_bundle is not None:
             flow_value = FLOW_VALUES.get(current.flow, "all")
             scope = current.fund_scope
-            if current.category:
-                dimension, entity = "category", current.category
-            elif current.fund:
-                dimension, entity = "fund", current.fund
-            elif current.department:
-                dimension, entity = "department", current.department
-            else:
-                totals = current_bundle.aggregate("totals_by_year_flow_scope")
-                totals = totals.loc[totals["fund_scope"].eq(scope)]
-                if flow_value != "all":
-                    totals = totals.loc[totals["expense_revenue"].eq(flow_value)]
-                return (
-                    totals.groupby("fiscal_year", as_index=False)["amount"].sum().sort_values("fiscal_year")
-                )
-            history = current_bundle.aggregate("history")
-            history = history.loc[
-                history["dimension"].eq(dimension)
-                & history["entity"].eq(entity)
-                & history["fund_scope"].eq(scope)
-            ]
+            totals = current_bundle.aggregate("totals_by_year_flow_scope")
+            totals = totals.loc[totals["fund_scope"].eq(scope)]
             if flow_value != "all":
-                history = history.loc[history["expense_revenue"].eq(flow_value)]
-            return history.groupby("fiscal_year", as_index=False)["amount"].sum().sort_values("fiscal_year")
+                totals = totals.loc[totals["expense_revenue"].eq(flow_value)]
+            return totals.groupby("fiscal_year", as_index=False)["amount"].sum().sort_values("fiscal_year")
         data = _state_rows(frame(), current, year=None, include_hierarchy=False)
         if data.empty:
             return pd.DataFrame(columns=["fiscal_year", "amount"])
@@ -863,13 +799,19 @@ def overview_server(
         current = current_state()
         if data.empty:
             return go.FigureWidget()
-        colors = ["#003c71" if int(year) == current.year else "#0072ce" for year in data["fiscal_year"]]
+        selected = data["fiscal_year"].eq(current.year)
         figure = go.FigureWidget(
             go.Bar(
-                x=data["fiscal_year"].astype(str),
+                x=data["fiscal_year"].map(lambda year: f"FY{int(year)}"),
                 y=data["amount"],
-                marker_color=colors,
-                hovertemplate="FY%{x}<br>$%{y:,.0f}<extra></extra>",
+                marker={
+                    "color": ["#003c71" if value else "#0072ce" for value in selected],
+                    "line": {
+                        "color": ["#c99a3b" if value else "rgba(0,0,0,0)" for value in selected],
+                        "width": [3 if value else 0 for value in selected],
+                    },
+                },
+                hovertemplate="%{x}<br>$%{y:,.0f}<br>View %{x} details<extra></extra>",
                 name=FLOW_LABELS[current.flow],
             )
         )
@@ -878,12 +820,7 @@ def overview_server(
             if not points.point_inds:
                 return
             selected_year = int(data.iloc[points.point_inds[0]]["fiscal_year"])
-            open_selection(
-                {
-                    "year": selected_year,
-                    "department": "",
-                }
-            )
+            _sync_context_value(year=selected_year)
 
         figure.data[0].on_click(_open_year)
         figure.update_layout(
@@ -908,18 +845,26 @@ def overview_server(
     def trend_summary() -> str:
         data = trend_data()
         current = current_state()
-        if data.empty or current.year is None or current.compare_year is None:
+        if data.empty or current.year is None:
             return "No trend is available until the normalized snapshot is ready."
-        amounts = data.set_index("fiscal_year")["amount"]
-        current_total = float(amounts.get(current.year, 0))
-        prior_total = float(amounts.get(current.compare_year, 0))
-        change = current_total - prior_total
-        percent = change / prior_total * 100 if prior_total else None
-        percent_text = format_percent(percent) if percent is not None else "percentage unavailable"
+        summary = _measure_summary(current.flow)
+        if summary is None:
+            return "No change is available until the normalized snapshot is ready."
+        if summary.change_amount is None:
+            return (
+                f"FY{summary.year}: {format_currency(summary.current_amount)} | "
+                f"Change from FY{summary.prior_year}: unavailable"
+            )
+        if summary.prior_amount == 0:
+            return (
+                f"FY{summary.year}: {format_currency(summary.current_amount)} | "
+                f"Change from FY{summary.prior_year}: {format_signed_currency(summary.change_amount)} | "
+                f"New in FY{summary.year}"
+            )
         return (
-            f"FY{current.year}: {format_currency(current_total)}. "
-            f"Change from FY{current.compare_year}: {format_currency(change)} "
-            f"({percent_text})."
+            f"FY{summary.year}: {format_currency(summary.current_amount)} | "
+            f"Change from FY{summary.prior_year}: {format_signed_currency(summary.change_amount)} "
+            f"({format_signed_percent(summary.change_percent or 0)})"
         )
 
     def trend_exact() -> Any:
@@ -1437,61 +1382,8 @@ def overview_server(
             )
         return ui.div(aria_live="polite", class_="city-overview-status")
 
-    @reactive.calc
-    def story_facts() -> dict[str, Any] | None:
-        current_bundle = bundle()
-        if current_bundle is None:
-            return None
-        latest_year = current_bundle.latest_year
-        years_available = current_bundle.years
-        latest_rows = current_bundle.rows.loc[current_bundle.rows["fiscal_year"].eq(latest_year)]
-        return {
-            "latest_year": latest_year,
-            "earliest_year": min(years_available) if years_available else latest_year,
-            "approved_total": float(latest_rows["amount"].sum()),
-            "source_rows": current_bundle.metadata.row_count,
-        }
-
-    def story_lede() -> str:
-        facts = story_facts()
-        if facts is None:
-            return (
-                "Every figure represents approved budget authority, not actual spending. "
-                "A validated prepared snapshot must load before budget figures are shown."
-            )
-        return (
-            "Every figure represents approved budget authority, not actual spending. "
-            f"The FY{facts['latest_year']} prepared snapshot keeps the citywide total, "
-            "the hierarchy, and the exact source rows connected."
-        )
-
-    def story_authority_label() -> str:
-        facts = story_facts()
-        return f"FY{facts['latest_year']} approved authority" if facts else "Approved authority unavailable"
-
-    def story_authority_value() -> str:
-        facts = story_facts()
-        return f"${facts['approved_total']:,.0f}" if facts else "Not available"
-
-    def story_snapshot_note() -> str:
-        facts = story_facts()
-        if facts is None:
-            return "No validated prepared cache is currently available"
-        return (
-            f"Prepared cache: {facts['source_rows']:,} source rows across "
-            f"FY{facts['earliest_year']} to FY{facts['latest_year']}"
-        )
-
-    def story_live_year() -> str:
-        facts = story_facts()
-        return f"FY{facts['latest_year']}" if facts else "Waiting for data"
-
-    output(render.ui(active_filters), id="active_filters")
-    output(render.text(story_lede), id="story_lede")
-    output(render.text(story_authority_label), id="story_authority_label")
-    output(render.text(story_authority_value), id="story_authority_value")
-    output(render.text(story_snapshot_note), id="story_snapshot_note")
-    output(render.text(story_live_year), id="story_live_year")
+    output(render.text(context_year), id="context_year")
+    output(render.text(benchmark_value), id="benchmark_value")
     output(render.ui(kpis), id="kpis")
     output(render.ui(movements), id="movements")
     output(render_widget(trend_chart), id="trend_chart")

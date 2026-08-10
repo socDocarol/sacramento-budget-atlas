@@ -30,12 +30,15 @@ def _jump_link(label: str, href: str, *, detail: str) -> Any:
 
 def story_studio_ui(
     *,
+    latest_year: int = 2027,
+    benchmark_value: Any | None = None,
+    source_rows: str = "29,387",
     analysis_slot: Any | None = None,
 ) -> Any:
     """Build the visible opening section that precedes the live overview.
 
-    Snapshot facts are server-rendered from the active validated bundle. The
-    opening never substitutes reference-snapshot values while data is missing.
+    The optional benchmark slot lets the live Overview render the fixed FY2027
+    expense benchmark after the prepared snapshot is available.
     """
 
     live_slot = analysis_slot or ui.p(
@@ -45,26 +48,26 @@ def story_studio_ui(
     return ui.tags.section(
         ui.div(
             ui.div(
-                ui.div("Approved Budget Context", class_="city-story-studio__eyebrow"),
+                ui.div("Sacramento Approved Budget", class_="city-story-studio__eyebrow"),
                 ui.h1(
-                    "Sacramento Budget Dashboard",
+                    "Sacramento's approved budget, in context.",
                     class_="city-story-studio__title",
                 ),
                 ui.p(
-                    ui.output_text("story_lede", inline=True),
+                    "Explore approved budget context by fund scope, measure, and fiscal year.",
                     class_="city-story-studio__lede",
                 ),
                 ui.div(
                     ui.div(
-                        ui.output_text("story_authority_label", inline=True),
+                        f"FY{latest_year} approved expenses benchmark",
                         class_="city-story-studio__value-label",
                     ),
                     ui.div(
-                        ui.output_text("story_authority_value", inline=True),
+                        benchmark_value or "$3,255,626,838",
                         class_="city-story-studio__value tabular",
                     ),
                     ui.div(
-                        ui.output_text("story_snapshot_note", inline=True),
+                        "This fixed all-funds benchmark is approved spending-plan authority, not actual spending.",
                         class_="city-story-studio__value-note",
                     ),
                     class_="city-story-studio__value-block",
@@ -91,11 +94,11 @@ def story_studio_ui(
                 ui.div(
                     ui.div("Citywide context", class_="city-story-studio__live-eyebrow"),
                     ui.div(
-                        ui.span(
-                            ui.output_text("story_live_year", inline=True),
+                        ui.div(
+                            ui.output_text("context_year"),
                             class_="city-story-studio__live-year",
                         ),
-                        ui.span("Approved authority", class_="city-story-studio__live-meaning"),
+                        ui.span("Approved budget context", class_="city-story-studio__live-meaning"),
                         class_="city-story-studio__live-meta",
                     ),
                     class_="city-story-studio__live-head",
@@ -109,8 +112,8 @@ def story_studio_ui(
             ui.div(
                 ui.div("Related views", class_="city-story-studio__jump-eyebrow"),
                 ui.tags.nav(
-                    _jump_link("Overview", "#view-overview", detail="Citywide totals and movements"),
-                    _jump_link("What changed", "#view-changed", detail="Fiscal-year movements"),
+                    _jump_link("Overview", "#view-overview", detail="Citywide totals and changes"),
+                    _jump_link("What changed", "#view-changed", detail="Fiscal-year changes"),
                     _jump_link("Explorer", "#view-explorer", detail="Exact supporting records"),
                     aria_label="Related budget views",
                     class_="city-story-studio__jump-list",
@@ -138,7 +141,7 @@ def story_studio_ui(
         id="story-studio",
         data_story_studio="opening",
         class_="city-story-studio",
-        aria_label="Approved Budget Context opening",
+        aria_label="Sacramento Approved Budget opening",
     )
 
 
