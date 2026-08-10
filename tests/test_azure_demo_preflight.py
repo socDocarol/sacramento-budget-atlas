@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "Test-AzureDemoPrerequisites.ps1"
 
@@ -140,7 +139,9 @@ def test_preflight_rejects_missing_deployment_permissions(tmp_path: Path) -> Non
         tmp_path,
         _write_fake_az(
             tmp_path,
-            permissions=[{"actions": ["Microsoft.Resources/subscriptions/resourceGroups/read"], "notActions": []}],
+            permissions=[
+                {"actions": ["Microsoft.Resources/subscriptions/resourceGroups/read"], "notActions": []}
+            ],
         ),
     )
 
