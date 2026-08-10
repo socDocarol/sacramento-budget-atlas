@@ -43,7 +43,7 @@ function ConvertTo-ObjectArray {
 
 function Get-ExactDisplayNameMatch {
     param(
-        [Parameter(Mandatory = $true)]$Candidates,
+        [Parameter(Mandatory = $true)][AllowNull()]$Candidates,
         [Parameter(Mandatory = $true)][string]$DisplayName,
         [Parameter(Mandatory = $true)][string]$ObjectKind
     )
