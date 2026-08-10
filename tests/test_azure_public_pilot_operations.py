@@ -47,7 +47,9 @@ def _write_fakes(tmp_path: Path) -> tuple[Path, Path]:
                 "registries": [
                     {
                         "server": "saccitydaoregistry.azurecr.io",
-                        "identity": RUNTIME_IDENTITY,
+                        # Azure resource IDs are case-insensitive and live API responses
+                        # do not preserve casing consistently across these two fields.
+                        "identity": RUNTIME_IDENTITY.upper(),
                     }
                 ],
             },
@@ -84,6 +86,11 @@ if ($command -match '^containerapp replica list') {
   exit 0
 }
 if ($command -match '^containerapp exec') {
+  Write-Error 'WARNING: Use ctrl + D to exit.' -ErrorAction Continue
+  if ($command -match '[\"]') {
+    Write-Error 'Nested double quotes are not portable through az.cmd.'
+    exit 65
+  }
   if ($command -match 'id -u') { '10001' } else { '200' }
   exit 0
 }
@@ -173,3 +180,12 @@ def test_warm_script_reaches_internal_readiness(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert FQDN in result.stdout
     assert "ready" in result.stdout.lower()
+
+
+@pytest.mark.parametrize("script", [SMOKE_SCRIPT, WARM_SCRIPT])
+def test_container_exec_tolerates_azure_cli_stderr_warnings(script: Path) -> None:
+    """PowerShell 5.1 must not turn az containerapp exec's normal warning into failure."""
+    source = script.read_text(encoding="utf-8")
+
+    assert "$ErrorActionPreference = 'Continue'" in source
+    assert "$execExitCode = $LASTEXITCODE" in source

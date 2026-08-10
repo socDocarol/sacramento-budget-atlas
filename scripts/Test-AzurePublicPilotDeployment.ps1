@@ -68,16 +68,32 @@ function Invoke-InReplica {
         [Parameter(Mandatory = $true)][string]$Command
     )
 
-    $raw = & $AzCommand containerapp exec `
-        --name $ContainerAppName `
-        --resource-group $ResourceGroupName `
-        --revision $RevisionName `
-        --replica $ReplicaName `
-        --command $Command 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $raw = & $AzCommand containerapp exec `
+            --name $ContainerAppName `
+            --resource-group $ResourceGroupName `
+            --revision $RevisionName `
+            --replica $ReplicaName `
+            --command $Command 2>&1
+        $execExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($execExitCode -ne 0) {
         throw "Container command failed in revision '$RevisionName'."
     }
     return $raw -join "`n"
+}
+
+function New-PythonHttpStatusCommand {
+    param([Parameter(Mandatory = $true)][string]$Uri)
+
+    $uriBytes = [System.Text.Encoding]::UTF8.GetBytes($Uri) -join ','
+    $moduleBytes = '117,114,108,108,105,98,46,114,101,113,117,101,115,116'
+    return "python -c print(__import__(bytes([$moduleBytes]).decode()).request.urlopen(bytes([$uriBytes]).decode(),timeout=5).status)"
 }
 
 $app = Invoke-AzJson @(
@@ -138,7 +154,7 @@ if ($identityIds.Count -ne 1 -or $identityIds[0] -notmatch "/$runtimeIdentityNam
 $registries = @($app.properties.configuration.registries)
 if ($registries.Count -ne 1 -or
     $registries[0].server -cne 'saccitydaoregistry.azurecr.io' -or
-    $registries[0].identity -cne $identityIds[0]) {
+    $registries[0].identity -ine $identityIds[0]) {
     throw 'The Container App must pull from the shared registry through its runtime identity.'
 }
 
@@ -182,9 +198,9 @@ if ($uid -notmatch '(?m)^\s*10001\s*$') {
     throw 'The application container is not running as UID 10001.'
 }
 $liveStatus = Invoke-InReplica -RevisionName $activeRevision.name -ReplicaName $replica.name `
-    -Command "python -c `"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=5).status)`""
+    -Command (New-PythonHttpStatusCommand -Uri 'http://127.0.0.1:8000/health/live')
 $readyStatus = Invoke-InReplica -RevisionName $activeRevision.name -ReplicaName $replica.name `
-    -Command "python -c `"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5).status)`""
+    -Command (New-PythonHttpStatusCommand -Uri 'http://127.0.0.1:8000/health/ready')
 if ($liveStatus -notmatch '(?m)^\s*200\s*$' -or $readyStatus -notmatch '(?m)^\s*200\s*$') {
     throw 'Internal liveness and readiness endpoints must both return HTTP 200.'
 }
