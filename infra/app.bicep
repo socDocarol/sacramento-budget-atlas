@@ -159,6 +159,12 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
                 path: '/health/live'
                 port: 8000
                 scheme: 'HTTP'
+                httpHeaders: [
+                  {
+                    name: 'Host'
+                    value: '${containerAppName}.${containerAppsEnvironment.properties.defaultDomain}'
+                  }
+                ]
               }
               initialDelaySeconds: 5
               periodSeconds: 5
@@ -171,6 +177,12 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
                 path: '/health/live'
                 port: 8000
                 scheme: 'HTTP'
+                httpHeaders: [
+                  {
+                    name: 'Host'
+                    value: '${containerAppName}.${containerAppsEnvironment.properties.defaultDomain}'
+                  }
+                ]
               }
               initialDelaySeconds: 30
               periodSeconds: 30
@@ -183,6 +195,12 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
                 path: '/health/ready'
                 port: 8000
                 scheme: 'HTTP'
+                httpHeaders: [
+                  {
+                    name: 'Host'
+                    value: '${containerAppName}.${containerAppsEnvironment.properties.defaultDomain}'
+                  }
+                ]
               }
               initialDelaySeconds: 10
               periodSeconds: 30

@@ -134,6 +134,15 @@ def test_container_app_enforces_immutable_release_and_health_contract() -> None:
     assert "'${containerAppName}.${containerAppsEnvironment.properties.defaultDomain}'" in app
 
 
+def test_health_probes_send_the_allowed_public_host_header() -> None:
+    """Pod-IP probe hosts would be rejected before the revision can become healthy."""
+    app = _read("infra/app.bicep")
+    allowed_host_value = "value: '${containerAppName}.${containerAppsEnvironment.properties.defaultDomain}'"
+
+    assert app.count("name: 'Host'") == 3
+    assert app.count(allowed_host_value) == 4
+
+
 def test_github_deployment_role_is_scoped_to_the_new_container_app() -> None:
     """Resource-group deployment rights could permit changing Measure U or another shared app."""
     app = _read("infra/app.bicep")
