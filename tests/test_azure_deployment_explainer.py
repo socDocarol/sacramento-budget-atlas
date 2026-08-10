@@ -18,6 +18,19 @@ REQUIRED_SECTIONS = {
 }
 
 
+def _relative_luminance(hex_color: str) -> float:
+    channels = [int(hex_color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
+    linear = [
+        channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4 for channel in channels
+    ]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast_ratio(first: str, second: str) -> float:
+    luminances = sorted((_relative_luminance(first), _relative_luminance(second)))
+    return (luminances[1] + 0.05) / (luminances[0] + 0.05)
+
+
 class ExplainerParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -73,6 +86,25 @@ def test_explainer_is_offline_semantic_and_javascript_free() -> None:
     assert "@media (max-width: 720px)" in html
     assert "@media print" in html
     assert ":focus-visible" in html
+
+
+def test_focus_outline_has_three_to_one_contrast_against_adjacent_surfaces() -> None:
+    html, _ = _page()
+    custom_properties = dict(re.findall(r"(--[\w-]+):\s*(#[0-9a-fA-F]{6})", html))
+    focus_rule = re.search(
+        r"a:focus-visible,\s*summary:focus-visible\s*\{[^}]*outline:[^;]*var\((--[\w-]+)\)",
+        html,
+        re.DOTALL,
+    )
+
+    assert focus_rule is not None
+    focus_color = custom_properties[focus_rule.group(1)]
+    adjacent_surfaces = {
+        "navigation": "#ffffff",
+        "details": custom_properties["--panel"],
+    }
+    for surface, background in adjacent_surfaces.items():
+        assert _contrast_ratio(focus_color, background) >= 3, surface
 
 
 def test_explainer_contains_no_identifiers_secrets_or_unresolved_markers() -> None:

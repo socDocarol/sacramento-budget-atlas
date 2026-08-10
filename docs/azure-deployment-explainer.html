@@ -44,7 +44,7 @@
 
     a:focus-visible,
     summary:focus-visible {
-      outline: 3px solid var(--gold);
+      outline: 3px solid var(--city-blue-dark);
       outline-offset: 4px;
       border-radius: 4px;
     }
@@ -623,6 +623,10 @@
 
       details > *:not(summary) {
         display: block !important;
+      }
+
+      details::details-content {
+        content-visibility: visible;
       }
 
       .table-wrap {
