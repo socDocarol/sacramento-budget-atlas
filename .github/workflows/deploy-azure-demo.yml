@@ -1,0 +1,195 @@
+name: Deploy Azure demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Update the existing Container App after pushing the immutable image
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-azure-demo
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, scan, and optionally deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: azure-demo
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install pinned uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.12.0"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Synchronize frozen dependencies
+        run: uv sync --frozen
+
+      - name: Run Ruff lint
+        run: uv run --frozen ruff check --no-cache .
+
+      - name: Check Ruff formatting
+        run: uv run --frozen ruff format --check --no-cache .
+
+      - name: Run unit tests
+        run: uv run --frozen pytest -p no:cacheprovider
+
+      - name: Set immutable image names
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA:0:12}"
+          revision_suffix="sha-${short_sha}"
+          echo "local_image=budget-atlas:${revision_suffix}" >>"$GITHUB_OUTPUT"
+          echo "revision_suffix=${revision_suffix}" >>"$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build the production image once
+        run: docker build --pull --tag "${{ steps.image.outputs.local_image }}" .
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@aa0e114b2e19480f157109b9922bda359bd98b90 # v0.20.8
+        with:
+          image: ${{ steps.image.outputs.local_image }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sacramento-budget-atlas-azure-sbom.spdx.json
+
+      - name: Scan the exact image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: ${{ steps.image.outputs.local_image }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+      - name: Authenticate to Azure with GitHub OIDC
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Push the scanned image and resolve its digest
+        id: push
+        shell: bash
+        env:
+          ACR_NAME: sacbudgetatlasdemo
+          ACR_LOGIN_SERVER: sacbudgetatlasdemo.azurecr.io
+          LOCAL_IMAGE: ${{ steps.image.outputs.local_image }}
+          REVISION_SUFFIX: ${{ steps.image.outputs.revision_suffix }}
+        run: |
+          set -euo pipefail
+          remote_image="${ACR_LOGIN_SERVER}/budget-atlas:${REVISION_SUFFIX}"
+          az acr login --name "$ACR_NAME"
+          docker tag "$LOCAL_IMAGE" "$remote_image"
+          docker push "$remote_image"
+
+          digest=$(az acr repository show \
+            --name "$ACR_NAME" \
+            --image "budget-atlas:${REVISION_SUFFIX}" \
+            --query digest \
+            --output tsv)
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "ACR returned an invalid manifest digest." >&2
+            exit 1
+          fi
+
+          digest_reference="${ACR_LOGIN_SERVER}/budget-atlas@${digest}"
+          echo "digest_reference=${digest_reference}" >>"$GITHUB_OUTPUT"
+          {
+            echo '### Azure demo image'
+            echo
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- Revision suffix: \`${REVISION_SUFFIX}\`"
+            echo "- Immutable image: \`${digest_reference}\`"
+            echo "- Container App update requested: \`${{ inputs.deploy }}\`"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Require the existing Container App
+        if: ${{ inputs.deploy }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          az containerapp show \
+            --name ca-sac-budget-atlas-demo \
+            --resource-group rg-sac-budget-atlas-demo-wus2 \
+            --output none
+
+      - name: Update only the immutable image and revision suffix
+        if: ${{ inputs.deploy }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          az containerapp update \
+            --name ca-sac-budget-atlas-demo \
+            --resource-group rg-sac-budget-atlas-demo-wus2 \
+            --image "${{ steps.push.outputs.digest_reference }}" \
+            --revision-suffix "${{ steps.image.outputs.revision_suffix }}" \
+            --output none
+
+      - name: Poll revision and internal probe readiness
+        if: ${{ inputs.deploy }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          resource_group='rg-sac-budget-atlas-demo-wus2'
+          app_name='ca-sac-budget-atlas-demo'
+          expected_suffix='${{ steps.image.outputs.revision_suffix }}'
+          deadline=$((SECONDS + 600))
+
+          while (( SECONDS < deadline )); do
+            revision=$(az containerapp show \
+              --name "$app_name" \
+              --resource-group "$resource_group" \
+              --query properties.latestRevisionName \
+              --output tsv)
+            health_state=$(az containerapp revision show \
+              --name "$app_name" \
+              --resource-group "$resource_group" \
+              --revision "$revision" \
+              --query properties.healthState \
+              --output tsv)
+            provisioning_state=$(az containerapp revision show \
+              --name "$app_name" \
+              --resource-group "$resource_group" \
+              --revision "$revision" \
+              --query properties.provisioningState \
+              --output tsv)
+
+            echo "revision=$revision health=$health_state provisioning=$provisioning_state"
+            if [[ "$revision" == *"--${expected_suffix}" && \
+                  "$health_state" == 'Healthy' && \
+                  "$provisioning_state" == 'Provisioned' ]]; then
+              echo "Revision $revision passed the platform's internal startup, liveness, and readiness probes."
+              exit 0
+            fi
+            if [[ "$provisioning_state" == 'ProvisioningFailed' || "$health_state" == 'Unhealthy' ]]; then
+              echo "The new revision failed before becoming active; the prior single revision retains traffic." >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+          echo 'The new revision did not become healthy within ten minutes; the prior single revision retains traffic.' >&2
+          exit 1
