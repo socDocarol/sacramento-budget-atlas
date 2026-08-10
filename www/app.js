@@ -49,6 +49,9 @@
       lastScrollY: 0,
       ticking: false,
     },
+    overviewYear: null,
+    overviewYearFocus: null,
+    overviewChartObserver: null,
     detail: {
       element: null,
       drawer: null,
@@ -306,6 +309,9 @@
     var trigger = event.target.closest && event.target.closest("[data-overview-select]");
     if (!trigger) {
       if (event.target.closest && event.target.closest("#overview-reset")) {
+        state.overviewYear = "2027";
+        state.overviewYearFocus = null;
+        setOverviewYearPressed("2027");
         clearClientSelectionPresentation();
       }
       return;
@@ -333,8 +339,148 @@
     window.Shiny.setInputValue(inputName, selection, { priority: "event" });
   }
 
+  function setOverviewPressed(root, selector, active) {
+    root.querySelectorAll(selector).forEach(function (control) {
+      control.setAttribute("aria-pressed", control === active ? "true" : "false");
+    });
+  }
+
+  function setOverviewYearPressed(year) {
+    document.querySelectorAll("[data-overview-year]").forEach(function (control) {
+      control.setAttribute(
+        "aria-pressed",
+        control.getAttribute("data-overview-year") === year ? "true" : "false"
+      );
+    });
+  }
+
+  function activeOverviewYear() {
+    if (state.overviewYear) return "FY" + state.overviewYear;
+    return ((document.getElementById("overview-context_year") || {}).textContent || "").trim();
+  }
+
+  function sendOverviewMeasure(event) {
+    var trigger = event.target.closest && event.target.closest("[data-overview-measure]");
+    if (!trigger || !window.Shiny || !window.Shiny.setInputValue) return;
+    var group = trigger.closest(".city-story-studio__live-kpis") || document;
+    setOverviewPressed(group, "[data-overview-measure]", trigger);
+    window.Shiny.setInputValue("overview-measure_request", trigger.getAttribute("data-overview-measure"), {
+      priority: "event"
+    });
+  }
+
+  function sendOverviewYear(event) {
+    var trigger = event.target.closest && event.target.closest("[data-overview-year]");
+    if (!trigger || !window.Shiny || !window.Shiny.setInputValue) return;
+    var year = trigger.getAttribute("data-overview-year");
+    if (!year) return;
+    state.overviewYear = year;
+    state.overviewYearFocus = trigger.matches(".city-overview-year-control") ? year : null;
+    setOverviewYearPressed(year);
+    window.Shiny.setInputValue("overview-year_request", { year: year }, { priority: "event" });
+  }
+
+  function handleOverviewControlKeydown(event) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    var trigger = event.target.closest && event.target.closest(
+      "[data-overview-measure], [data-overview-year]"
+    );
+    if (!trigger) return;
+    if (trigger.matches("button")) return;
+    event.preventDefault();
+    if (trigger.hasAttribute("data-overview-measure")) sendOverviewMeasure(event);
+    else sendOverviewYear(event);
+  }
+
+  function decorateOverviewYearControls() {
+    var root = document.getElementById("overview-trend_chart");
+    if (!root) return;
+    var plot = root.matches(".js-plotly-plot") ? root : root.querySelector(".js-plotly-plot");
+    var values = plot && plot.data && plot.data[0] && plot.data[0].x;
+    if (!plot || !values) return;
+    var activeYear = activeOverviewYear();
+    Array.prototype.forEach.call(plot.querySelectorAll(".points .point"), function (point, index) {
+      var year = String(values[index] || "").replace(/^FY/, "");
+      if (!/^\d{4}$/.test(year)) return;
+      point.setAttribute("data-overview-year", year);
+      point.setAttribute("role", "button");
+      point.setAttribute("tabindex", "0");
+      point.setAttribute("aria-label", "View FY" + year + " budget context");
+      point.setAttribute("title", "View FY" + year + " budget context");
+      point.setAttribute("aria-pressed", activeYear === "FY" + year ? "true" : "false");
+    });
+  }
+
+  function renderOverviewYearControls() {
+    var root = document.getElementById("overview-trend_chart");
+    if (!root) return;
+    var plot = root.matches(".js-plotly-plot") ? root : root.querySelector(".js-plotly-plot");
+    var values = plot && plot.data && plot.data[0] && plot.data[0].x;
+    if (!values) return;
+    var years = values.map(function (value) { return String(value); }).filter(function (label, index, all) {
+      return /^FY\d{4}$/.test(label) && all.indexOf(label) === index;
+    });
+    if (!years.length) return;
+    var group = root.parentNode.querySelector(".city-overview-year-controls");
+    if (!group) {
+      group = document.createElement("div");
+      group.className = "city-overview-year-controls";
+      group.setAttribute("aria-label", "Select fiscal year from chart");
+      root.insertAdjacentElement("afterend", group);
+    }
+    group.setAttribute("role", "group");
+    var activeYear = activeOverviewYear();
+    var retained = {};
+    years.forEach(function (label, index) {
+      var year = label.slice(2);
+      var button = group.querySelector('.city-overview-year-control[data-overview-year="' + year + '"]');
+      if (!button) {
+        button = document.createElement("button");
+        button.type = "button";
+        button.className = "city-overview-year-control";
+      }
+      button.textContent = label;
+      button.setAttribute("data-overview-year", year);
+      button.setAttribute("aria-pressed", activeYear === label ? "true" : "false");
+      button.setAttribute("aria-label", "View " + label + " budget context");
+      button.setAttribute("title", "View " + label + " budget context");
+      var expectedPosition = group.children[index];
+      if (expectedPosition !== button) group.insertBefore(button, expectedPosition || null);
+      retained[year] = true;
+    });
+    group.querySelectorAll(".city-overview-year-control").forEach(function (button) {
+      if (!retained[button.getAttribute("data-overview-year")]) button.remove();
+    });
+    if (state.overviewYearFocus) {
+      var focusYear = state.overviewYearFocus;
+      var focusTarget = group.querySelector(
+        '.city-overview-year-control[data-overview-year="' + focusYear + '"]'
+      );
+      if (focusTarget) {
+        window.requestAnimationFrame(function () {
+          if (!focusTarget.isConnected) return;
+          focusTarget.focus({ preventScroll: true });
+          state.overviewYearFocus = null;
+        });
+      }
+    }
+  }
+
+  function observeOverviewChart() {
+    var root = document.getElementById("overview-trend_chart");
+    if (!root || state.overviewChartObserver) return;
+    state.overviewChartObserver = new MutationObserver(function () {
+      window.requestAnimationFrame(function () {
+        decorateOverviewYearControls();
+        renderOverviewYearControls();
+      });
+    });
+    state.overviewChartObserver.observe(root, { childList: true, subtree: true });
+  }
+
   function rememberIntegratedDetailTrigger(event) {
     if (detailIsActive() || !event.target.closest) return;
+    if (event.target.closest("[data-overview-measure], [data-overview-year], #overview-trend_chart")) return;
     if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
     if (event.target.closest(".city-detail-overlay")) return;
     var output = event.target.closest(
@@ -1136,10 +1282,13 @@
     }
   }, true);
   document.addEventListener("click", selectNav);
+  document.addEventListener("click", sendOverviewMeasure);
+  document.addEventListener("click", sendOverviewYear);
   document.addEventListener("click", sendOverviewSelection);
   document.addEventListener("click", handleDetailClick);
   document.addEventListener("pointerdown", rememberIntegratedDetailTrigger, true);
   document.addEventListener("keydown", rememberIntegratedDetailTrigger, true);
+  document.addEventListener("keydown", handleOverviewControlKeydown);
   document.addEventListener("pointerdown", cancelPendingDetailFocusRestore, true);
   document.addEventListener("keydown", cancelPendingDetailFocusRestore, true);
   document.addEventListener("keydown", trapDetailFocus);
@@ -1153,6 +1302,13 @@
   document.addEventListener("shiny:bound", function (event) { discoverDataFrames(event.target); });
   document.addEventListener("shiny:recalculated", function (event) {
     discoverDataFrames(event.target);
+    observeOverviewChart();
+    window.requestAnimationFrame(decorateOverviewYearControls);
+    window.requestAnimationFrame(renderOverviewYearControls);
+    window.setTimeout(decorateOverviewYearControls, 250);
+    window.setTimeout(renderOverviewYearControls, 250);
+    window.setTimeout(decorateOverviewYearControls, 1000);
+    window.setTimeout(renderOverviewYearControls, 1000);
     registerDetailFocusRestoreObserver();
     window.requestAnimationFrame(function () {
       attemptDetailFocusRestore(false);
@@ -1168,6 +1324,13 @@
     registerDetailFocusRestoreObserver();
     discoverDataFrames(document);
     selectHashView();
+    observeOverviewChart();
+    [500, 1500, 3000, 5000].forEach(function (delay) {
+      window.setTimeout(function () {
+        decorateOverviewYearControls();
+        renderOverviewYearControls();
+      }, delay);
+    });
     var overlay = detailShell();
     if (overlay) {
       overlay.addEventListener("transitionend", function (event) {

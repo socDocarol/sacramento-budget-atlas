@@ -839,11 +839,16 @@ def test_ten_sessions_keep_overview_and_drawer_state_isolated(browser: Browser, 
             ready(session, live_server_url)
             expect(session.locator(SHELL)).to_have_count(1)
             wait_lifecycle(session, "closed")
-        pages[0].locator("#overview-flow").select_option("expense")
+        pages[0].locator('[data-overview-measure="revenue"]').click()
+        expect(pages[0].locator('[data-overview-measure="revenue"]')).to_have_attribute(
+            "aria-pressed", "true", timeout=20_000
+        )
         pages[0].locator(".city-movement").first.click()
         wait_lifecycle(pages[0], "open")
         for session in pages[1:]:
-            expect(session.locator("#overview-flow")).to_have_value("all", timeout=20_000)
+            expect(session.locator('[data-overview-measure="expense"]')).to_have_attribute(
+                "aria-pressed", "true", timeout=20_000
+            )
             wait_lifecycle(session, "closed")
 
 

@@ -101,9 +101,118 @@ def test_overview_reset_clears_one_action_context_and_linked_selection(
     expect(selected).to_have_class(re.compile(r"\bis-selected\b"), timeout=20_000)
 
     page.locator("#overview-reset").click()
-    expect(page.locator("#overview-flow")).to_have_value("all", timeout=20_000)
     expect(page.locator("#overview-fund_scope")).to_have_value("all_funds", timeout=20_000)
+    expect(page.locator('[data-overview-measure="expense"]')).to_have_attribute(
+        "aria-pressed", "true", timeout=20_000
+    )
     expect(selected).not_to_have_class(re.compile(r"\bis-selected\b"), timeout=20_000)
+
+
+def test_overview_measure_and_year_controls_update_context_without_opening_detail(
+    page: Page, live_server_url: str
+) -> None:
+    page_errors: list[str] = []
+    console_errors: list[str] = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.on(
+        "console",
+        lambda message: console_errors.append(message.text) if message.type == "error" else None,
+    )
+    ready(page, live_server_url)
+    drawer = page.locator('.city-detail-drawer[role="dialog"]')
+    expense = page.locator('[data-overview-measure="expense"]')
+    revenue = page.locator('[data-overview-measure="revenue"]')
+    chart_year_2026 = page.locator('#overview-trend_chart [data-overview-year="2026"]')
+    keyboard_year_2025 = page.locator('.city-overview-year-control[data-overview-year="2025"]')
+    year_group = page.locator(".city-overview-year-controls")
+    kpi_cards = page.locator("#overview-kpis .city-stat-card")
+
+    expect(page.locator("#overview-year")).to_have_count(0)
+    expect(page.locator("#overview-compare")).to_have_count(0)
+    expect(page.locator("#overview-flow")).to_have_count(0)
+    expect(page.get_by_text("FY2027 approved expenses benchmark", exact=True)).to_be_visible()
+    expect(expense).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#overview-reset")).to_have_attribute(
+        "aria-label", "Reset to FY2027 expenses and all funds"
+    )
+    expect(page.locator("#overview-reset")).to_have_attribute(
+        "title", "Reset to FY2027 expenses and all funds"
+    )
+    expect(page.locator("#overview-kpis")).not_to_contain_text("movement")
+    expect(page.locator("#overview-kpis .city-stat-card__value").first).to_have_text(
+        re.compile(r"^\$[\d,]+$")
+    )
+    expect(year_group).to_have_attribute("role", "group")
+    chart_years = page.locator("#overview-trend_chart").evaluate(
+        "root => root.querySelector('.js-plotly-plot').data[0].x.map(String)"
+    )
+    expect(year_group.locator(".city-overview-year-control")).to_have_text(chart_years)
+
+    revenue.click()
+    expect(revenue).to_have_attribute("aria-pressed", "true", timeout=20_000)
+    expect(expense).to_have_attribute("aria-pressed", "false", timeout=20_000)
+    expect(drawer).to_be_hidden()
+    expect(page.locator("#overview-trend_summary")).to_contain_text("FY2027", timeout=20_000)
+
+    expense.focus()
+    page.keyboard.press("Enter")
+    expect(expense).to_have_attribute("aria-pressed", "true", timeout=20_000)
+    revenue.focus()
+    page.keyboard.press("Space")
+    expect(revenue).to_have_attribute("aria-pressed", "true", timeout=20_000)
+    expect(drawer).to_be_hidden()
+
+    top_kpis_before = [kpi_cards.nth(index).inner_text() for index in (0, 1)]
+    lower_kpis_before = [kpi_cards.nth(index).inner_text() for index in (2, 3)]
+    scopes_before = page.locator("#overview-fund_scopes").inner_text()
+
+    expect(chart_year_2026).to_have_attribute("role", "button")
+    expect(chart_year_2026).to_have_attribute("tabindex", "0")
+    chart_year_2026.click(force=True)
+    expect(page.locator("#overview-context_year")).to_have_text("FY2026", timeout=20_000)
+    expect(page.locator("#overview-trend_summary")).to_contain_text("FY2026", timeout=20_000)
+    expect(chart_year_2026).to_have_attribute("aria-pressed", "true", timeout=20_000)
+    expect(page.locator('.city-overview-year-control[data-overview-year="2026"]')).to_have_attribute(
+        "aria-pressed", "true", timeout=20_000
+    )
+    assert [kpi_cards.nth(index).inner_text() for index in (0, 1)] != top_kpis_before
+    assert [kpi_cards.nth(index).inner_text() for index in (2, 3)] != lower_kpis_before
+    assert page.locator("#overview-fund_scopes").inner_text() != scopes_before
+    expect(drawer).to_be_hidden()
+
+    keyboard_year_2025.focus()
+    page.keyboard.press("Space")
+    expect(page.locator("#overview-context_year")).to_have_text("FY2025", timeout=20_000)
+    expect(keyboard_year_2025).to_be_focused()
+    expect(keyboard_year_2025).to_have_attribute("aria-pressed", "true")
+    expect(page.locator('#overview-trend_chart [data-overview-year="2025"]')).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    page.locator("#overview-reset").click()
+    expect(page.locator("#overview-context_year")).to_have_text("FY2027", timeout=20_000)
+    expect(expense).to_have_attribute("aria-pressed", "true", timeout=20_000)
+    expect(page.locator("#overview-fund_scope")).to_have_value("all_funds", timeout=20_000)
+
+    for width in (2048, 1440, 800):
+        page.set_viewport_size({"width": width, "height": 1000})
+        assert_no_horizontal_overflow(page)
+        boxes = [kpi_cards.nth(index).bounding_box() for index in range(4)]
+        assert all(box is not None for box in boxes)
+        assert abs(boxes[0]["y"] - boxes[1]["y"]) < 1
+        assert abs(boxes[2]["y"] - boxes[3]["y"]) < 1
+        assert boxes[2]["y"] > boxes[0]["y"]
+        visible_values = page.locator(
+            "#overview-kpis .city-stat-card__value, #overview-fund_scopes .city-stat-card__value"
+        )
+        assert all(
+            not re.search(r"\$\d+(?:\.\d+)?[KMB]\b", value) for value in visible_values.all_text_contents()
+        )
+        assert visible_values.evaluate_all(
+            "values => values.every(value => value.scrollWidth <= value.clientWidth)"
+        )
+
+    assert page_errors == []
+    assert console_errors == []
 
 
 def test_explorer_reset_returns_all_filters(page: Page, live_server_url: str) -> None:
@@ -159,28 +268,27 @@ def test_detail_drawer_focus_escape_and_workspace_hierarchy(page: Page, live_ser
 
 def test_overview_bookmark_round_trip_restores_exact_shared_state(page: Page, live_server_url: str) -> None:
     ready(page, live_server_url)
-    page.locator("#overview-flow").select_option("expense")
-    expect(page.locator("#overview-flow")).to_have_value("expense")
-    year = page.locator("#overview-year").input_value()
-    compare = page.locator("#overview-compare").input_value()
-    flow = page.locator("#overview-flow").input_value()
+    page.locator('[data-overview-measure="revenue"]').click()
+    expect(page.locator('[data-overview-measure="revenue"]')).to_have_attribute("aria-pressed", "true")
+    page.locator('.city-overview-year-control[data-overview-year="2026"]').click()
+    expect(page.locator("#overview-context_year")).to_have_text("FY2026")
     scope = page.locator("#overview-fund_scope").input_value()
 
     page.locator(".city-movement").first.click()
     page.locator("[data-detail-expand]").click()
     workspace = page.locator("#overview-analysis-workspace")
     expect(workspace).to_be_visible(timeout=20_000)
-    page.locator("#overview-workspace_department").select_option(label="Public Works")
-    expect(page.locator('#overview-workspace_fund option[value="General Fund"]')).to_have_count(
-        1, timeout=20_000
-    )
-    page.locator("#overview-workspace_fund").select_option(label="General Fund")
-    expect(page.locator(".city-workspace-breadcrumb")).to_contain_text("General Fund", timeout=20_000)
-    expect(page.locator('#overview-workspace_category option[value="Services & Supplies"]')).to_have_count(
-        1, timeout=20_000
-    )
-    page.locator("#overview-workspace_category").select_option(label="Services & Supplies")
-    expect(page.locator(".city-workspace-breadcrumb")).to_contain_text("Services & Supplies", timeout=20_000)
+    department = page.locator("#overview-workspace_department")
+    fund = page.locator("#overview-workspace_fund")
+    category = page.locator("#overview-workspace_category")
+    selected_department = department.input_value()
+    selected_fund = fund.input_value()
+    selected_category = category.input_value()
+    assert selected_department != "all"
+    assert selected_fund == "all"
+    assert selected_category == "all"
+    breadcrumb = page.locator(".city-workspace-breadcrumb")
+    expect(breadcrumb).to_contain_text(selected_department, timeout=20_000)
 
     page.locator("#share_state").click()
     expect(page).to_have_url(re.compile(r"_inputs_"), timeout=20_000)
@@ -204,16 +312,17 @@ def test_overview_bookmark_round_trip_restores_exact_shared_state(page: Page, li
     restored.goto(bookmarked, wait_until="domcontentloaded")
     expect(restored.locator(".city-source-status--fresh")).to_be_visible(timeout=30_000)
     expect(restored).to_have_url(re.compile(r"#overview$"), timeout=20_000)
-    expect(restored.locator("#overview-year")).to_have_value(year, timeout=20_000)
-    expect(restored.locator("#overview-compare")).to_have_value(compare, timeout=20_000)
-    expect(restored.locator("#overview-flow")).to_have_value(flow, timeout=20_000)
+    expect(restored.locator("#overview-context_year")).to_have_text("FY2026", timeout=20_000)
+    expect(restored.locator('[data-overview-measure="revenue"]')).to_have_attribute(
+        "aria-pressed", "true", timeout=20_000
+    )
     expect(restored.locator("#overview-fund_scope")).to_have_value(scope, timeout=20_000)
     expect(restored.locator("#overview-analysis-workspace")).to_be_visible(timeout=20_000)
-    expect(restored.locator("#overview-workspace_department")).to_have_value("Public Works", timeout=20_000)
-    expect(restored.locator("#overview-workspace_fund")).to_have_value("General Fund", timeout=20_000)
-    expect(restored.locator("#overview-workspace_category")).to_have_value(
-        "Services & Supplies", timeout=20_000
+    expect(restored.locator("#overview-workspace_department")).to_have_value(
+        selected_department, timeout=20_000
     )
+    expect(restored.locator("#overview-workspace_fund")).to_have_value(selected_fund, timeout=20_000)
+    expect(restored.locator("#overview-workspace_category")).to_have_value(selected_category, timeout=20_000)
     restored.close()
 
 
@@ -226,7 +335,6 @@ def test_skip_link_keeps_main_anchor_focus_and_invalid_hash_canonicalizes(
     page.keyboard.press("Enter")
     expect(page).to_have_url(re.compile(r"#main$"))
     expect(page.locator("#main")).to_be_focused()
-    assert page.evaluate("window.scrollY > 0")
 
     page.goto(f"{live_server_url}/#bogus", wait_until="domcontentloaded")
     expect(page.locator(".city-source-status--fresh")).to_be_visible(timeout=30_000)

@@ -1336,6 +1336,103 @@ body:has(.city-story-studio) :is(.city-stat-card, .city-detail-metrics, .city-de
   .city-story-studio__river-accent, .city-story-studio__civic-accent { transform: none; }
 }
 
+/* Overview interaction affordances stay within the Story Studio canvas. */
+.city-story-studio__live-kpis > .shiny-html-output > div {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .8rem;
+}
+.city-story-studio__live-kpis .city-stat-card {
+  min-height: 9.25rem;
+  padding: .95rem 1rem;
+}
+.city-story-studio__live-kpis .city-stat-card__label {
+  font-size: .7rem;
+  font-weight: 800;
+}
+.city-story-studio__live-kpis .city-stat-card__value {
+  font-size: clamp(1.45rem, 2.2vw, 2.15rem);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.city-story-studio__live-kpis [data-overview-measure] {
+  position: relative;
+  width: 100%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.city-story-studio__live-kpis [data-overview-measure]::after {
+  display: block;
+  width: .7rem;
+  height: .7rem;
+  margin-top: .5rem;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  content: "";
+}
+.city-story-studio__live-kpis [data-overview-measure][aria-pressed="true"] {
+  border-color: var(--city-cobalt);
+  background: rgb(222 235 247 / .78);
+}
+.city-story-studio__live-kpis [data-overview-measure][aria-pressed="true"]::after {
+  background: currentColor;
+  box-shadow: inset 0 0 0 2px white;
+}
+.city-story-studio__live-kpis [data-overview-measure]:hover,
+.city-story-studio__live-reset:hover {
+  border-color: var(--city-cobalt);
+  box-shadow: 0 3px 10px rgb(15 23 42 / .12);
+}
+.city-story-studio :is([data-overview-measure], [data-overview-year], .city-story-studio__live-reset):focus-visible {
+  outline: 3px solid var(--city-gold);
+  outline-offset: 3px;
+}
+.city-story-studio__live-reset[title] { position: relative; }
+.city-story-studio__live-reset[title]:hover::after,
+.city-story-studio__live-reset[title]:focus-visible::after {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + .45rem);
+  z-index: 3;
+  width: max-content;
+  max-width: 16rem;
+  padding: .35rem .5rem;
+  border-radius: 3px;
+  background: var(--city-cobalt);
+  color: white;
+  content: attr(title);
+  font-size: .7rem;
+  line-height: 1.25;
+}
+.city-story-studio__live-chart [data-overview-year] { cursor: pointer; }
+.city-story-studio__live-chart [data-overview-year][aria-pressed="true"] { filter: brightness(.86); }
+.city-overview-year-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin-top: .55rem;
+}
+.city-overview-year-control {
+  min-width: 4.6rem;
+  padding: .3rem .45rem;
+  border: 1px solid var(--city-line);
+  border-radius: 3px;
+  background: white;
+  color: var(--city-cobalt);
+  cursor: pointer;
+  font-size: .7rem;
+  font-weight: 750;
+}
+.city-overview-year-control:hover,
+.city-overview-year-control[aria-pressed="true"] {
+  border-color: var(--city-cobalt);
+  background: rgb(222 235 247 / .78);
+}
+@media (max-width: 760px) {
+  .city-story-studio__live-kpis > .shiny-html-output > div { grid-template-columns: 1fr; }
+  .city-story-studio__live-kpis .city-stat-card { min-height: 0; }
+}
+
 /* Accepted final layout. This block must remain the stylesheet tail. */
 .city-header__inner {
   position: relative;
