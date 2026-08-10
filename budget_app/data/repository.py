@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import tempfile
 import time
@@ -26,6 +27,17 @@ from .prepared import PreparedBundleStore, prepare_bundle
 LOG = logging.getLogger(__name__)
 PAGE_SIZE = 1000
 MAX_PAGES = 100
+SOURCE_CHANGE_RETRIES = 2
+SOURCE_FIELDS: tuple[str, ...] = (
+    "Fiscal_Year",
+    "Department",
+    "Fund",
+    "CATEGORY",
+    "Amount",
+    "ExpenseRevenue",
+    "Fund_Category",
+    "ObjectId",
+)
 
 _MEMORY_CACHE: dict[str, tuple[BudgetSnapshot, float]] = {}
 _CACHE_LOCK = asyncio.Lock()
@@ -56,10 +68,28 @@ def _last_edit_date(payload: dict[str, Any]) -> int | None:
     candidate = payload.get("lastEditDate")
     if candidate is None and isinstance(payload.get("editingInfo"), dict):
         candidate = payload["editingInfo"].get("lastEditDate")
+    if candidate is None or isinstance(candidate, bool):
+        return None
     try:
-        return int(candidate) if candidate is not None else None
+        number = float(candidate)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(number) or not number.is_integer() or number < 0:
+        return None
+    return int(number)
+
+
+def _record_count(payload: dict[str, Any]) -> int:
+    candidate = payload.get("count")
+    if candidate is None or isinstance(candidate, bool):
+        raise RepositoryError("ArcGIS count response did not include a valid count")
+    try:
+        number = float(candidate)
+    except (TypeError, ValueError) as exc:
+        raise RepositoryError("ArcGIS count response did not include a valid count") from exc
+    if not math.isfinite(number) or not number.is_integer() or number < 0:
+        raise RepositoryError("ArcGIS count response did not include a valid count")
+    return int(number)
 
 
 class ArcGISBudgetRepository:
@@ -119,7 +149,19 @@ class ArcGISBudgetRepository:
     async def _source_metadata(self) -> dict[str, Any]:
         return await self._request_json(self.settings.arcgis_url, {"f": "json"})
 
-    async def _fetch_pages(self) -> pd.DataFrame:
+    async def _source_record_count(self) -> int:
+        payload = await self._request_json(
+            self.query_url,
+            {
+                "where": "1=1",
+                "returnCountOnly": "true",
+                "returnGeometry": "false",
+                "f": "json",
+            },
+        )
+        return _record_count(payload)
+
+    async def _fetch_pages(self, expected_count: int) -> pd.DataFrame:
         features: list[dict[str, Any]] = []
         offset = 0
         for _page in range(MAX_PAGES):
@@ -127,7 +169,8 @@ class ArcGISBudgetRepository:
                 self.query_url,
                 {
                     "where": "1=1",
-                    "outFields": "*",
+                    "outFields": ",".join(SOURCE_FIELDS),
+                    "returnGeometry": "false",
                     "f": "json",
                     "resultOffset": offset,
                     "resultRecordCount": PAGE_SIZE,
@@ -140,6 +183,11 @@ class ArcGISBudgetRepository:
             if not batch:
                 break
             features.extend(batch)
+            if len(features) > expected_count:
+                raise RepositoryError(
+                    "Approved Budgets API returned more rows than its source count "
+                    f"({len(features)} > {expected_count})"
+                )
             exceeded = bool(
                 payload.get("exceededTransferLimit")
                 or (
@@ -156,12 +204,72 @@ class ArcGISBudgetRepository:
             raise RepositoryError("Approved Budgets API exceeded the 100-page safety cap")
         if not features:
             raise RepositoryError("Approved Budgets API returned no rows")
-        return normalize_features(features)
+        if len(features) != expected_count:
+            raise RepositoryError(
+                f"Approved Budgets API pagination was incomplete ({len(features)} of {expected_count} rows)"
+            )
+        rows = normalize_features(features)
+        duplicate_count = int(rows["object_id"].duplicated(keep=False).sum())
+        if duplicate_count:
+            raise RepositoryError(
+                f"Approved Budgets API returned duplicate ObjectIds ({duplicate_count} affected rows)"
+            )
+        return rows
+
+    async def _fetch_stable_source(
+        self, initial_metadata: dict[str, Any] | None = None
+    ) -> tuple[pd.DataFrame, int]:
+        """Fetch one complete source version, retrying bounded edit races."""
+
+        metadata = initial_metadata
+        for attempt in range(SOURCE_CHANGE_RETRIES + 1):
+            if metadata is None:
+                metadata = await self._source_metadata()
+            before_edit = _last_edit_date(metadata)
+            if before_edit is None:
+                raise RepositoryError("ArcGIS layer metadata has no valid lastEditDate")
+
+            expected_count = await self._source_record_count()
+            fetch_error: RepositoryError | DataValidationError | None = None
+            rows: pd.DataFrame | None = None
+            try:
+                rows = await self._fetch_pages(expected_count)
+            except (RepositoryError, DataValidationError) as exc:
+                fetch_error = exc
+
+            after_metadata = await self._source_metadata()
+            after_edit = _last_edit_date(after_metadata)
+            if after_edit is None:
+                raise RepositoryError("ArcGIS layer metadata has no valid lastEditDate")
+            if before_edit != after_edit:
+                if attempt < SOURCE_CHANGE_RETRIES:
+                    LOG.warning(
+                        "budget source changed during pagination; retrying",
+                        extra={
+                            "attempt": attempt + 1,
+                            "source_edit_before": before_edit,
+                            "source_edit_after": after_edit,
+                        },
+                    )
+                    metadata = None
+                    continue
+                raise RepositoryError(
+                    "Approved Budgets source changed during pagination after "
+                    f"{SOURCE_CHANGE_RETRIES + 1} attempts"
+                )
+            if fetch_error is not None:
+                raise fetch_error
+            if rows is None:  # pragma: no cover - defensive type narrowing
+                raise RepositoryError("Approved Budgets API returned no rows")
+            return rows, before_edit
+
+        raise RepositoryError("Approved Budgets source could not be fetched consistently")
 
     async def fetch_rows(self) -> pd.DataFrame:
         """Fetch a complete normalized dataframe without consulting caches."""
 
-        return await self._fetch_pages()
+        rows, _source_edit = await self._fetch_stable_source()
+        return rows
 
     def _read_disk(self) -> tuple[BudgetSnapshot, SnapshotMetadata] | None:
         try:
@@ -267,12 +375,13 @@ class ArcGISBudgetRepository:
                 async with _CACHE_LOCK:
                     _MEMORY_CACHE[cache_key] = (fresh, now)
                 return completed(fresh, "fresh", cache_source="disk-fresh")
+            source_metadata: dict[str, Any] | None = None
             try:
                 source_metadata = await self._source_metadata()
                 source_edit = _last_edit_date(source_metadata)
             except Exception as metadata_error:  # noqa: BLE001
-                # Metadata is a freshness optimization. A direct page fetch
-                # remains useful when a test gateway or ArcGIS edge omits it.
+                # This precheck is a freshness optimization. The stable source
+                # fetch below retries metadata and requires a valid edit date.
                 LOG.warning("budget layer metadata request failed: %s", metadata_error)
                 source_edit = None
             if (
@@ -285,7 +394,7 @@ class ArcGISBudgetRepository:
                 async with _CACHE_LOCK:
                     _MEMORY_CACHE[cache_key] = (fresh, now)
                 return completed(fresh, "fresh", cache_source="disk-revalidated")
-            rows = await self._fetch_pages()
+            rows, source_edit = await self._fetch_stable_source(source_metadata)
             bundle = await asyncio.to_thread(
                 prepare_bundle,
                 rows,

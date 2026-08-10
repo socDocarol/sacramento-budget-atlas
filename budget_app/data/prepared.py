@@ -15,10 +15,12 @@ import os
 import shutil
 import tempfile
 import time
-from contextlib import suppress
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import Any, BinaryIO
 
 import pandas as pd
 
@@ -35,6 +37,9 @@ from .normalize import DataValidationError, normalize_frame
 LOG = logging.getLogger(__name__)
 PREPARATION_SCHEMA_VERSION = 1
 PREPARED_COLUMNS = (*NORMALIZED_COLUMNS, "fund_scope")
+DEFAULT_RETAINED_VERSIONS = 3
+DEFAULT_PROMOTION_LOCK_TIMEOUT_SECONDS = 30.0
+PROMOTION_LOCK_POLL_SECONDS = 0.05
 
 
 def _utc_now() -> str:
@@ -55,8 +60,78 @@ def _file_manifest(directory: Path, paths: list[Path]) -> dict[str, dict[str, in
     manifest: dict[str, dict[str, int | str]] = {}
     for path in paths:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        manifest[str(path.relative_to(directory))] = {"sha256": digest, "size": path.stat().st_size}
+        manifest[path.relative_to(directory).as_posix()] = {
+            "sha256": digest,
+            "size": path.stat().st_size,
+        }
     return manifest
+
+
+def _relative_parts(value: str, *, field: str) -> tuple[str, ...]:
+    """Return normalized parts for one untrusted relative cache path."""
+
+    if not isinstance(value, str) or not value.strip() or "\x00" in value:
+        raise DataValidationError(f"Prepared bundle {field} is not a valid relative path")
+    windows_path = PureWindowsPath(value)
+    normalized = value.replace("\\", "/")
+    posix_path = PurePosixPath(normalized)
+    if windows_path.drive or windows_path.is_absolute() or posix_path.is_absolute():
+        raise DataValidationError(f"Prepared bundle {field} must be relative")
+    if any(part in {"", ".", ".."} for part in posix_path.parts):
+        raise DataValidationError(f"Prepared bundle {field} contains unsafe path components")
+    return tuple(posix_path.parts)
+
+
+def _contained_path(root: Path, value: str, *, field: str) -> Path:
+    """Resolve an untrusted relative path and require containment in ``root``."""
+
+    parts = _relative_parts(value, field=field)
+    resolved_root = root.resolve()
+    candidate = (root.joinpath(*parts)).resolve()
+    if candidate == resolved_root or resolved_root not in candidate.parents:
+        raise DataValidationError(f"Prepared bundle {field} escapes its cache directory")
+    return candidate
+
+
+def _version_path(snapshots_dir: Path, version: str) -> Path:
+    """Return the directory for one safe, single-component version name."""
+
+    parts = _relative_parts(version, field="version")
+    if len(parts) != 1:
+        raise DataValidationError("Prepared bundle version must be a single path component")
+    return _contained_path(snapshots_dir, version, field="version")
+
+
+def _try_lock_file(handle: BinaryIO) -> bool:
+    """Try to acquire a one-byte exclusive lock using the host OS primitive."""
+
+    handle.seek(0)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
+def _unlock_file(handle: BinaryIO) -> None:
+    """Release a lock obtained by ``_try_lock_file``."""
+
+    handle.seek(0)
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _freeze_frame(frame: pd.DataFrame) -> pd.DataFrame:
@@ -291,22 +366,98 @@ build_prepared_bundle = prepare_bundle
 class PreparedBundleStore:
     """Versioned bundle storage with atomic current-pointer promotion.
 
-    A single process can safely read while another thread stages a bundle.  A
-    pointer replacement is the only operation that changes what new readers
-    observe, and the previous version remains available for rollback.
+    Readers can safely load while a thread or process stages a bundle. A
+    cross-process file lock serializes promotion for shared filesystems, the
+    current pointer is replaced atomically, and recent valid versions remain
+    available for rollback.
     """
 
-    def __init__(self, cache_dir: Path | str, *, schema_version: int = PREPARATION_SCHEMA_VERSION):
+    def __init__(
+        self,
+        cache_dir: Path | str,
+        *,
+        schema_version: int = PREPARATION_SCHEMA_VERSION,
+        retained_versions: int = DEFAULT_RETAINED_VERSIONS,
+        promotion_lock_timeout: float = DEFAULT_PROMOTION_LOCK_TIMEOUT_SECONDS,
+    ):
+        if retained_versions < 2:
+            raise ValueError("retained_versions must preserve current and at least one fallback")
+        if promotion_lock_timeout < 0:
+            raise ValueError("promotion_lock_timeout must be non-negative")
         self.cache_dir = Path(cache_dir)
         self.schema_version = schema_version
+        self.retained_versions = retained_versions
+        self.promotion_lock_timeout = promotion_lock_timeout
         self.snapshots_dir = self.cache_dir / "snapshots"
         self.current_path = self.cache_dir / "current.json"
+        self.promotion_lock_path = self.cache_dir / ".promotion.lock"
         self.legacy_rows_path = self.cache_dir / "approved-budgets.parquet"
         self.legacy_metadata_path = self.cache_dir / "approved-budgets.metadata.json"
 
     @staticmethod
     def _metadata_path(directory: Path) -> Path:
         return directory / "bundle.metadata.json"
+
+    @contextmanager
+    def _promotion_lock(self) -> Iterator[None]:
+        """Serialize promotions across processes, including shared Azure storage."""
+
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        deadline = time.monotonic() + self.promotion_lock_timeout
+        with self.promotion_lock_path.open("a+b") as handle:
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"\0")
+                handle.flush()
+            while not _try_lock_file(handle):
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"Timed out waiting for prepared bundle promotion lock after "
+                        f"{self.promotion_lock_timeout:g} seconds"
+                    )
+                time.sleep(min(PROMOTION_LOCK_POLL_SECONDS, max(0.0, deadline - time.monotonic())))
+            try:
+                yield
+            finally:
+                _unlock_file(handle)
+
+    def _write_current_pointer(self, version: str) -> None:
+        """Atomically write the pointer through a promotion-unique temporary file."""
+
+        _version_path(self.snapshots_dir, version)
+        temporary = self.cache_dir / f".current-{uuid.uuid4().hex}.json.tmp"
+        try:
+            with temporary.open("x", encoding="utf-8") as handle:
+                json.dump({"version": version}, handle, ensure_ascii=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.current_path)
+        finally:
+            with suppress(FileNotFoundError):
+                temporary.unlink()
+
+    def _cleanup_versions(self, current_version: str) -> None:
+        """Best-effort retention of current plus the newest valid fallbacks."""
+
+        current = _version_path(self.snapshots_dir, current_version)
+        candidates = sorted(
+            (
+                path.resolve()
+                for path in self.snapshots_dir.iterdir()
+                if path.is_dir() and not path.name.startswith(".staging-")
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        keep = {current}
+        for candidate in candidates:
+            if candidate in keep:
+                continue
+            if len(keep) < self.retained_versions and self.load_version(candidate.name) is not None:
+                keep.add(candidate)
+        for candidate in candidates:
+            if candidate not in keep:
+                shutil.rmtree(candidate)
 
     def _write_bundle_files(self, directory: Path, bundle: PreparedBudgetBundle) -> None:
         directory.mkdir(parents=True, exist_ok=True)
@@ -341,6 +492,7 @@ class PreparedBundleStore:
         if metadata_payload.get("prepared_columns") != list(PREPARED_COLUMNS):
             raise DataValidationError("Prepared bundle schema columns do not match")
         metadata = SnapshotMetadata.from_dict(metadata_payload)
+        _version_path(self.snapshots_dir, metadata.version)
         if metadata.schema_version != self.schema_version:
             raise DataValidationError("Unsupported prepared bundle schema version")
         rows = pd.read_parquet(directory / "rows.parquet")
@@ -352,7 +504,7 @@ class PreparedBundleStore:
         if not isinstance(artifact_manifest, dict) or not artifact_manifest:
             raise DataValidationError("Prepared bundle artifact manifest is missing")
         for relative, facts in artifact_manifest.items():
-            path = directory / relative
+            path = _contained_path(directory, relative, field="artifact path")
             if not path.exists() or not isinstance(facts, dict):
                 raise DataValidationError(f"Prepared bundle artifact is missing: {relative}")
             if path.stat().st_size != int(facts.get("size", -1)):
@@ -388,6 +540,8 @@ class PreparedBundleStore:
         choices_payload = json.loads((directory / "choices.json").read_text(encoding="utf-8"))
         choices = {key: tuple(str(value) for value in values) for key, values in choices_payload.items()}
         aggregate_manifest = metadata_payload.get("aggregate_manifest", {})
+        if not isinstance(aggregate_manifest, dict):
+            raise DataValidationError("Prepared bundle aggregate manifest is invalid")
         required_aggregates = {
             "overview_totals",
             "totals_by_year_flow_scope",
@@ -401,10 +555,13 @@ class PreparedBundleStore:
         }
         if not required_aggregates.issubset(aggregate_manifest):
             raise DataValidationError("Prepared bundle aggregate manifest is incomplete")
-        aggregates = {
-            name: _freeze_frame(pd.read_parquet(directory / "aggregates" / filename))
-            for name, filename in aggregate_manifest.items()
-        }
+        aggregate_dir = directory / "aggregates"
+        aggregates = {}
+        for name, filename in aggregate_manifest.items():
+            if not isinstance(name, str) or not isinstance(filename, str):
+                raise DataValidationError("Prepared bundle aggregate manifest is invalid")
+            path = _contained_path(aggregate_dir, filename, field="aggregate path")
+            aggregates[name] = _freeze_frame(pd.read_parquet(path))
         return PreparedBudgetBundle(
             rows=snapshot.rows,
             snapshot=snapshot,
@@ -417,39 +574,41 @@ class PreparedBundleStore:
     def promote(self, bundle: PreparedBudgetBundle) -> PreparedBudgetBundle:
         """Stage, reopen, validate, then atomically promote ``bundle``."""
 
-        self.snapshots_dir.mkdir(parents=True, exist_ok=True)
-        stage = Path(tempfile.mkdtemp(prefix=".staging-", dir=self.snapshots_dir))
-        final = self.snapshots_dir / bundle.version
-        try:
-            self._write_bundle_files(stage, bundle)
-            verified = self._validate_directory(stage)
-            if final.exists():
-                # Reuse an already verified identical version.  A corrupt
-                # directory is replaced from the fully validated stage.
-                try:
-                    self._validate_directory(final)
-                except Exception:  # noqa: BLE001
-                    shutil.rmtree(final)
-                    os.replace(stage, final)
+        final = _version_path(self.snapshots_dir, bundle.version)
+        with self._promotion_lock():
+            self.snapshots_dir.mkdir(parents=True, exist_ok=True)
+            stage = Path(tempfile.mkdtemp(prefix=".staging-", dir=self.snapshots_dir))
+            try:
+                self._write_bundle_files(stage, bundle)
+                verified = self._validate_directory(stage)
+                if final.exists():
+                    # Reuse an already verified identical version. A corrupt
+                    # directory is replaced from the fully validated stage.
+                    try:
+                        self._validate_directory(final)
+                    except Exception:  # noqa: BLE001
+                        shutil.rmtree(final)
+                        os.replace(stage, final)
+                    else:
+                        with suppress(FileNotFoundError):
+                            shutil.rmtree(stage)
                 else:
-                    with suppress(FileNotFoundError):
-                        shutil.rmtree(stage)
-            else:
-                os.replace(stage, final)
-            pointer_tmp = self.current_path.with_suffix(".json.tmp")
-            pointer_tmp.write_text(
-                json.dumps({"version": verified.version}, ensure_ascii=False), encoding="utf-8"
-            )
-            os.replace(pointer_tmp, self.current_path)
-            return self._validate_directory(final)
-        except Exception:
-            with suppress(OSError):
-                shutil.rmtree(stage)
-            raise
+                    os.replace(stage, final)
+                promoted = self._validate_directory(final)
+                self._write_current_pointer(verified.version)
+                try:
+                    self._cleanup_versions(verified.version)
+                except (OSError, ValueError, TypeError, KeyError, DataValidationError) as exc:
+                    LOG.warning("prepared bundle retention cleanup failed: %s", exc)
+                return promoted
+            except Exception:
+                with suppress(OSError):
+                    shutil.rmtree(stage)
+                raise
 
     def load_version(self, version: str) -> PreparedBudgetBundle | None:
         try:
-            return self._validate_directory(self.snapshots_dir / version)
+            return self._validate_directory(_version_path(self.snapshots_dir, version))
         except (OSError, ValueError, TypeError, KeyError, DataValidationError):
             LOG.warning("invalid prepared budget version", extra={"version": version})
             return None
@@ -461,16 +620,17 @@ class PreparedBundleStore:
         if self.current_path.exists():
             with suppress(OSError, ValueError, TypeError, KeyError):
                 pointer = json.loads(self.current_path.read_text(encoding="utf-8"))
-                if pointer.get("version"):
-                    candidates.append(str(pointer["version"]))
+                if isinstance(pointer, dict) and isinstance(pointer.get("version"), str):
+                    candidates.append(pointer["version"])
         if self.snapshots_dir.exists():
-            candidates.extend(
-                path.name
-                for path in sorted(
-                    self.snapshots_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True
-                )
-                if path.is_dir() and not path.name.startswith(".staging-")
-            )
+            versions_by_mtime: list[tuple[float, str]] = []
+            for path in self.snapshots_dir.iterdir():
+                try:
+                    if path.is_dir() and not path.name.startswith(".staging-"):
+                        versions_by_mtime.append((path.stat().st_mtime, path.name))
+                except OSError:
+                    continue
+            candidates.extend(version for _, version in sorted(versions_by_mtime, reverse=True))
         seen: set[str] = set()
         for version in candidates:
             if version in seen:

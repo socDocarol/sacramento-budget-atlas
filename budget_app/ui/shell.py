@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import date
 from typing import Any
 
 from shiny import ui
@@ -49,6 +48,7 @@ def city_header_ui(
     active: str = "overview",
     latest_year: str | None = None,
     nav_input_id: str = "app_view",
+    app_home: str = "/",
 ) -> Any:
     """Render only the header. The integration layer owns the one ``main`` landmark."""
     valid_navigation = {key for key, _, _ in PRIMARY_NAVIGATION + RESOURCE_NAVIGATION}
@@ -124,7 +124,7 @@ def city_header_ui(
                     ),
                     ui.tags.span("", aria_hidden="true", class_="city-brand-separator"),
                     ui.tags.span("Budget Dashboard", class_="city-app-identity"),
-                    href="/",
+                    href=app_home,
                     aria_label="City of Sacramento Budget Dashboard home",
                     class_="city-brand-link",
                 ),
@@ -166,7 +166,6 @@ def city_header_ui(
 
 
 def city_footer_ui(*, snapshot_label: str | None = None, source_url: str = CITY_SOURCE_URL) -> Any:
-    snapshot = snapshot_label or date.today().strftime("%B %d, %Y")
     return ui.tags.footer(
         ui.div(
             ui.div(
@@ -193,8 +192,12 @@ def city_footer_ui(*, snapshot_label: str | None = None, source_url: str = CITY_
                 class_="city-footer__source",
             ),
             ui.div(
-                ui.span(f"DATA SNAPSHOT · {snapshot}"),
-                ui.span("REFRESHED EVERY 24 HOURS"),
+                (
+                    ui.span(f"DATA SNAPSHOT · {snapshot_label}")
+                    if snapshot_label
+                    else ui.output_text("footer_snapshot_meta", inline=True)
+                ),
+                ui.output_text("footer_refresh_meta", inline=True),
                 class_="city-footer__meta",
             ),
             class_="city-container city-container--wide city-footer__inner",

@@ -1,0 +1,223 @@
+name: CI
+
+on:
+  push: {}
+  pull_request: {}
+  workflow_dispatch:
+    inputs:
+      run_resource_profile:
+        description: Run the constrained Azure Container Apps resource profile
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Python quality and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install pinned uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.12.0"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Synchronize frozen dependencies
+        run: uv sync --frozen
+
+      - name: Run Ruff lint
+        run: uv run --frozen ruff check --no-cache .
+
+      - name: Check Ruff formatting
+        run: uv run --frozen ruff format --check --no-cache .
+
+      - name: Run unit tests
+        run: uv run --frozen pytest -p no:cacheprovider
+
+  container:
+    name: Container build and security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Build local scan image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          load: true
+          pull: true
+          push: false
+          tags: sacramento-budget-atlas:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@aa0e114b2e19480f157109b9922bda359bd98b90 # v0.20.8
+        with:
+          image: sacramento-budget-atlas:ci
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sacramento-budget-atlas-sbom.spdx.json
+
+      - name: Scan image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: sacramento-budget-atlas:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+  resource-profile:
+    name: Azure resource profile (0.5 CPU / 1 GiB)
+    if: >-
+      github.ref == 'refs/heads/feat/azure-container-apps-public-pilot' ||
+      inputs.run_resource_profile == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build production profile image
+        run: docker build --pull --tag sacramento-budget-atlas:azure-profile .
+
+      - name: Run constrained clean-cache profile
+        id: profile
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          container_name='budget-atlas-azure-profile'
+          volume_name='budget-atlas-azure-profile-${{ github.run_id }}'
+          profile_file='azure-resource-profile.tsv'
+          ready_file='azure-ready.json'
+
+          cleanup() {
+            docker logs "$container_name" >azure-container.log 2>&1 || true
+            docker rm --force "$container_name" >/dev/null 2>&1 || true
+            docker volume rm "$volume_name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker volume create "$volume_name" >/dev/null
+          docker run --detach \
+            --name "$container_name" \
+            --cpus 0.5 \
+            --memory 1g \
+            --memory-swap 1g \
+            --publish 127.0.0.1:18000:8000 \
+            --volume "$volume_name:/var/cache/sacramento-budget" \
+            --env BUDGET_BACKGROUND_REFRESH_ENABLED=1 \
+            --env BUDGET_MANUAL_REFRESH_ENABLED=0 \
+            --env APP_ALLOWED_HOSTS=localhost,127.0.0.1 \
+            sacramento-budget-atlas:azure-profile >/dev/null
+
+          printf 'elapsed_seconds\tmemory_usage\tmemory_percent\tready_http\n' >"$profile_file"
+          started_at=$(date +%s)
+          max_memory_percent='0'
+          ready='false'
+          ready_elapsed=''
+
+          for _ in $(seq 1 60); do
+            running=$(docker inspect --format '{{.State.Running}}' "$container_name")
+            oom_killed=$(docker inspect --format '{{.State.OOMKilled}}' "$container_name")
+            if [[ "$running" != 'true' || "$oom_killed" == 'true' ]]; then
+              echo "Container stopped during constrained startup (running=$running, oom_killed=$oom_killed)." >&2
+              exit 1
+            fi
+
+            elapsed=$(($(date +%s) - started_at))
+            stats=$(docker stats --no-stream --format '{{.MemUsage}}|{{.MemPerc}}' "$container_name")
+            memory_usage=${stats%%|*}
+            memory_percent=${stats##*|}
+            memory_percent=${memory_percent%%%}
+            max_memory_percent=$(awk -v current="$memory_percent" -v peak="$max_memory_percent" 'BEGIN { print (current > peak) ? current : peak }')
+            ready_http=$(curl --silent --output "$ready_file" --write-out '%{http_code}' \
+              --header 'Host: localhost' http://127.0.0.1:18000/health/ready || true)
+            printf '%s\t%s\t%s\t%s\n' "$elapsed" "$memory_usage" "$memory_percent" "$ready_http" >>"$profile_file"
+
+            if [[ "$ready_http" == '200' ]]; then
+              ready='true'
+              ready_elapsed="$elapsed"
+              break
+            fi
+            sleep 5
+          done
+
+          if [[ "$ready" != 'true' ]]; then
+            echo 'Readiness did not succeed within five minutes.' >&2
+            exit 1
+          fi
+
+          for _ in $(seq 1 12); do
+            sleep 5
+            elapsed=$(($(date +%s) - started_at))
+            stats=$(docker stats --no-stream --format '{{.MemUsage}}|{{.MemPerc}}' "$container_name")
+            memory_usage=${stats%%|*}
+            memory_percent=${stats##*|}
+            memory_percent=${memory_percent%%%}
+            max_memory_percent=$(awk -v current="$memory_percent" -v peak="$max_memory_percent" 'BEGIN { print (current > peak) ? current : peak }')
+            printf '%s\t%s\t%s\t200\n' "$elapsed" "$memory_usage" "$memory_percent" >>"$profile_file"
+          done
+
+          curl --fail --silent --show-error --header 'Host: localhost' \
+            http://127.0.0.1:18000/ >/dev/null
+
+          oom_killed=$(docker inspect --format '{{.State.OOMKilled}}' "$container_name")
+          if [[ "$oom_killed" == 'true' ]]; then
+            echo 'Container was OOM-killed.' >&2
+            exit 1
+          fi
+          if ! awk -v peak="$max_memory_percent" 'BEGIN { exit !(peak < 75) }'; then
+            echo "Peak memory ${max_memory_percent}% is not below the 75% safety gate." >&2
+            exit 1
+          fi
+
+          {
+            echo "ready_seconds=$ready_elapsed"
+            echo "peak_memory_percent=$max_memory_percent"
+          } >>"$GITHUB_OUTPUT"
+          {
+            echo '### Azure Container Apps resource profile'
+            echo
+            echo "- CPU limit: 0.5"
+            echo "- Memory limit: 1 GiB"
+            echo "- Readiness: ${ready_elapsed} seconds"
+            echo "- Peak memory: ${max_memory_percent}%"
+            echo '- OOM killed: false'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload resource profile evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: azure-container-resource-profile
+          path: |
+            azure-resource-profile.tsv
+            azure-ready.json
+            azure-container.log
+          if-no-files-found: warn
+          retention-days: 14

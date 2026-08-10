@@ -1437,7 +1437,61 @@ def overview_server(
             )
         return ui.div(aria_live="polite", class_="city-overview-status")
 
+    @reactive.calc
+    def story_facts() -> dict[str, Any] | None:
+        current_bundle = bundle()
+        if current_bundle is None:
+            return None
+        latest_year = current_bundle.latest_year
+        years_available = current_bundle.years
+        latest_rows = current_bundle.rows.loc[current_bundle.rows["fiscal_year"].eq(latest_year)]
+        return {
+            "latest_year": latest_year,
+            "earliest_year": min(years_available) if years_available else latest_year,
+            "approved_total": float(latest_rows["amount"].sum()),
+            "source_rows": current_bundle.metadata.row_count,
+        }
+
+    def story_lede() -> str:
+        facts = story_facts()
+        if facts is None:
+            return (
+                "Every figure represents approved budget authority, not actual spending. "
+                "A validated prepared snapshot must load before budget figures are shown."
+            )
+        return (
+            "Every figure represents approved budget authority, not actual spending. "
+            f"The FY{facts['latest_year']} prepared snapshot keeps the citywide total, "
+            "the hierarchy, and the exact source rows connected."
+        )
+
+    def story_authority_label() -> str:
+        facts = story_facts()
+        return f"FY{facts['latest_year']} approved authority" if facts else "Approved authority unavailable"
+
+    def story_authority_value() -> str:
+        facts = story_facts()
+        return f"${facts['approved_total']:,.0f}" if facts else "Not available"
+
+    def story_snapshot_note() -> str:
+        facts = story_facts()
+        if facts is None:
+            return "No validated prepared cache is currently available"
+        return (
+            f"Prepared cache: {facts['source_rows']:,} source rows across "
+            f"FY{facts['earliest_year']} to FY{facts['latest_year']}"
+        )
+
+    def story_live_year() -> str:
+        facts = story_facts()
+        return f"FY{facts['latest_year']}" if facts else "Waiting for data"
+
     output(render.ui(active_filters), id="active_filters")
+    output(render.text(story_lede), id="story_lede")
+    output(render.text(story_authority_label), id="story_authority_label")
+    output(render.text(story_authority_value), id="story_authority_value")
+    output(render.text(story_snapshot_note), id="story_snapshot_note")
+    output(render.text(story_live_year), id="story_live_year")
     output(render.ui(kpis), id="kpis")
     output(render.ui(movements), id="movements")
     output(render_widget(trend_chart), id="trend_chart")

@@ -96,7 +96,11 @@ def detail_presentation(
         deepest = f"ObjectId {state.selected_record}"
     else:
         deepest = next(
-            (str(getattr(state, dimension)) for dimension in reversed(_DIMENSIONS) if getattr(state, dimension)),
+            (
+                str(getattr(state, dimension))
+                for dimension in reversed(_DIMENSIONS)
+                if getattr(state, dimension)
+            ),
             None,
         )
     year_label = f"FY{state.year}" if state.year is not None else "Current fiscal year"
@@ -474,9 +478,7 @@ def detail_drawer_server(
 
         state = selection()
         current_bundle = bundle()
-        if current_bundle is not None and not any(
-            (state.department, state.fund, state.category)
-        ):
+        if current_bundle is not None and not any((state.department, state.fund, state.category)):
             value = current_bundle.aggregate("totals_by_year_flow_scope")
             value = value.loc[value["fund_scope"].eq(state.fund_scope)].copy()
             if value.empty:
@@ -492,18 +494,10 @@ def detail_drawer_server(
                         "expense_records",
                     ]
                 )
-            value["approved_revenue"] = value["amount"].where(
-                value["expense_revenue"].eq("Revenues"), 0.0
-            )
-            value["approved_expenses"] = value["amount"].where(
-                value["expense_revenue"].eq("Expenses"), 0.0
-            )
-            value["revenue_records"] = value["line_items"].where(
-                value["expense_revenue"].eq("Revenues"), 0
-            )
-            value["expense_records"] = value["line_items"].where(
-                value["expense_revenue"].eq("Expenses"), 0
-            )
+            value["approved_revenue"] = value["amount"].where(value["expense_revenue"].eq("Revenues"), 0.0)
+            value["approved_expenses"] = value["amount"].where(value["expense_revenue"].eq("Expenses"), 0.0)
+            value["revenue_records"] = value["line_items"].where(value["expense_revenue"].eq("Revenues"), 0)
+            value["expense_records"] = value["line_items"].where(value["expense_revenue"].eq("Expenses"), 0)
             summary = (
                 value.groupby("fiscal_year", as_index=False)[
                     ["approved_revenue", "approved_expenses", "revenue_records", "expense_records"]
@@ -613,7 +607,9 @@ def detail_drawer_server(
         matches = value.loc[value["fiscal_year"].eq(int(year))]
         return matches.iloc[0] if not matches.empty else None
 
-    def _summary_metric(row: pd.Series | None, state: OverviewSelectionState, view: DetailPresentation) -> float:
+    def _summary_metric(
+        row: pd.Series | None, state: OverviewSelectionState, view: DetailPresentation
+    ) -> float:
         if row is None:
             return 0.0
         if view.lens == "net_position":
@@ -1058,7 +1054,11 @@ def detail_drawer_server(
         return format_percent(percent) if percent is not None else "Percentage unavailable"
 
     def change_explanation() -> str:
-        return detail_presentation(selection(), presentation_lens()).change_explanation if _summary_ready() else ""
+        return (
+            detail_presentation(selection(), presentation_lens()).change_explanation
+            if _summary_ready()
+            else ""
+        )
 
     def record_count() -> str:
         if not _summary_ready():

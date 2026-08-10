@@ -30,16 +30,12 @@ def _jump_link(label: str, href: str, *, detail: str) -> Any:
 
 def story_studio_ui(
     *,
-    latest_year: int = 2027,
-    approved_total: str = "$3,255,626,838",
-    source_rows: str = "29,387",
     analysis_slot: Any | None = None,
 ) -> Any:
     """Build the visible opening section that precedes the live overview.
 
-    The defaults reflect the prepared FY2027 bundle in this local demo. The
-    optional arguments let the integration layer pass current cache metadata
-    later without changing the composition or its interaction contract.
+    Snapshot facts are server-rendered from the active validated bundle. The
+    opening never substitutes reference-snapshot values while data is missing.
     """
 
     live_slot = analysis_slot or ui.p(
@@ -55,14 +51,20 @@ def story_studio_ui(
                     class_="city-story-studio__title",
                 ),
                 ui.p(
-                    "Every figure represents approved budget authority, not actual spending. The FY2027 prepared snapshot keeps the citywide total, the hierarchy, and the exact source rows connected.",
+                    ui.output_text("story_lede", inline=True),
                     class_="city-story-studio__lede",
                 ),
                 ui.div(
-                    ui.div(f"FY{latest_year} approved authority", class_="city-story-studio__value-label"),
-                    ui.div(approved_total, class_="city-story-studio__value tabular"),
                     ui.div(
-                        f"Prepared cache: {source_rows} source rows across FY2013 to FY{latest_year}",
+                        ui.output_text("story_authority_label", inline=True),
+                        class_="city-story-studio__value-label",
+                    ),
+                    ui.div(
+                        ui.output_text("story_authority_value", inline=True),
+                        class_="city-story-studio__value tabular",
+                    ),
+                    ui.div(
+                        ui.output_text("story_snapshot_note", inline=True),
                         class_="city-story-studio__value-note",
                     ),
                     class_="city-story-studio__value-block",
@@ -89,7 +91,10 @@ def story_studio_ui(
                 ui.div(
                     ui.div("Citywide context", class_="city-story-studio__live-eyebrow"),
                     ui.div(
-                        ui.span(f"FY{latest_year}", class_="city-story-studio__live-year"),
+                        ui.span(
+                            ui.output_text("story_live_year", inline=True),
+                            class_="city-story-studio__live-year",
+                        ),
                         ui.span("Approved authority", class_="city-story-studio__live-meaning"),
                         class_="city-story-studio__live-meta",
                     ),

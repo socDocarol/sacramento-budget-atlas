@@ -6,10 +6,12 @@ keeps the Budget pilot shell and adds a Civic Budget Story Studio opening stage
 that connects narrative context, filters, key figures, trends, and supporting
 records.
 
-**Status:** local demo and private-repository preparation only. This project is
-not a City-approved application, public release, official City communication,
-or production deployment. The City data owner and communications team have not
-approved the application, its interpretation, or its visual assets.
+**Status:** local proof of concept with a reviewed, time-limited Azure public-pilot
+deployment route. The pilot identity bootstrap is deployed, but no Budget Atlas
+Container App or image is deployed. This project is not a City-approved public
+release, official City communication, or production deployment. The City data
+owner and communications team have not approved the application, its
+interpretation, or its visual assets.
 
 ![Sacramento Budget Atlas Overview](docs/images/sacramento-budget-atlas-overview.png)
 
@@ -143,8 +145,8 @@ uv run shiny run --host 127.0.0.1 --port 8125 app.py
 ```
 
 With `BUDGET_BACKGROUND_REFRESH_ENABLED=0`, automatic source refresh is off,
-so the session remains deterministic against the existing cache. An explicit
-Retry Source action still requests a refresh and can contact ArcGIS.
+so the session remains deterministic against the existing cache. Manual source
+refresh is disabled by default and must be enabled explicitly.
 
 ## Configuration
 
@@ -157,6 +159,9 @@ Retry Source action still requests a refresh and can contact ArcGIS.
 | `BUDGET_CACHE_TTL_SECONDS` | `86400` | Freshness window before source metadata is checked |
 | `LOG_LEVEL` | `INFO` | Python logging level |
 | `APP_BASE_PATH` | `/` | Shiny application base path, normalized with leading and trailing slashes |
+| `APP_ALLOWED_HOSTS` | `localhost,127.0.0.1,testserver` | Comma-separated Host header allowlist; set deployed hostnames explicitly |
+| `BUDGET_MANUAL_REFRESH_ENABLED` | `false` | Allow users to request source refreshes from the UI |
+| `BUDGET_MANUAL_REFRESH_COOLDOWN_SECONDS` | `300` | Process-wide cooldown between manual source refreshes |
 | `BUDGET_PREPARED_SCHEMA_VERSION` | `1` | Prepared-bundle schema version |
 
 `BUDGET_BACKGROUND_REFRESH_ENABLED` is an application-level toggle in
@@ -177,6 +182,10 @@ Open <http://127.0.0.1:8000/>. The first container run has an empty named
 volume, so it needs network access for its initial ArcGIS refresh. Subsequent
 runs reuse the volume. The container filesystem is read-only except for the
 cache volume and a temporary filesystem at `/tmp`.
+
+The container exposes `/health/live` for liveness and `/health/ready` for
+traffic admission. Azure-specific topology, settings, and release gates are in
+[`docs/azure-deployment-hardening.md`](docs/azure-deployment-hardening.md).
 
 ## Focused checks
 
@@ -253,6 +262,9 @@ photography reuse terms.
   design choices.
 - [`docs/demo-status.md`](docs/demo-status.md) records the local visual smoke
   result and known limitations.
+- [`docs/azure-container-apps-public-pilot-route.md`](docs/azure-container-apps-public-pilot-route.md)
+  records the selected shared-DBA deployment route, and the adjacent runbook
+  defines preview, bootstrap, validation, rollback, and expiry procedures.
 - [`docs/source-certification.md`](docs/source-certification.md) records the
   copied source decision and verification boundary.
 - [`docs/prepared-bundle-performance-architecture.md`](docs/prepared-bundle-performance-architecture.md)

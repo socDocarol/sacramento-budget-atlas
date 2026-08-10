@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from budget_app.data import PreparedBundleStore, prepare_bundle
 from budget_app.data.domain import aggregate_by_dimension, overview_totals
@@ -112,3 +114,94 @@ def test_artifact_hash_detects_aggregate_or_choice_corruption(tmp_path: Path) ->
     choices_path = tmp_path / "snapshots" / repaired.version / "choices.json"
     choices_path.write_text("{}", encoding="utf-8")
     assert store.load_current() is None
+
+
+def test_concurrent_promotions_are_serialized_and_leave_valid_pointer(tmp_path: Path) -> None:
+    bundles = [
+        prepare_bundle(rows(amount), source_url="x", fetched_at=f"2026-01-0{index}T00:00:00+00:00")
+        for index, amount in enumerate((2.0, 3.0), start=1)
+    ]
+
+    def promote(bundle):
+        return PreparedBundleStore(tmp_path).promote(bundle)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        promoted = list(executor.map(promote, bundles))
+
+    assert {bundle.version for bundle in promoted} == {bundle.version for bundle in bundles}
+    current = PreparedBundleStore(tmp_path).load_current()
+    assert current is not None
+    assert current.version in {bundle.version for bundle in bundles}
+    assert not list(tmp_path.glob(".current-*.json.tmp"))
+    assert not list((tmp_path / "snapshots").glob(".staging-*"))
+
+
+def test_promotion_lock_times_out_without_changing_current(tmp_path: Path) -> None:
+    store = PreparedBundleStore(tmp_path)
+    first = store.promote(prepare_bundle(rows(1.0), source_url="x"))
+    contender = PreparedBundleStore(tmp_path, promotion_lock_timeout=0.05)
+
+    with store._promotion_lock(), pytest.raises(TimeoutError, match="promotion lock"):
+        contender.promote(prepare_bundle(rows(4.0), source_url="x"))
+
+    assert PreparedBundleStore(tmp_path).load_current().version == first.version
+
+
+def test_cache_paths_reject_pointer_and_manifest_traversal(tmp_path: Path) -> None:
+    store = PreparedBundleStore(tmp_path)
+    bundle = store.promote(prepare_bundle(rows(), source_url="x"))
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    assert store.load_version("../outside") is None
+    (tmp_path / "current.json").write_text(json.dumps({"version": "../outside"}), encoding="utf-8")
+    assert store.load_current().version == bundle.version
+
+    metadata_path = tmp_path / "snapshots" / bundle.version / "bundle.metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["artifact_manifest"]["../outside"] = {"sha256": "invalid", "size": 0}
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    assert store.load_version(bundle.version) is None
+
+    repaired = store.promote(prepare_bundle(rows(), source_url="x"))
+    metadata_path = tmp_path / "snapshots" / repaired.version / "bundle.metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["aggregate_manifest"]["overview_totals"] = "../../outside.parquet"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    assert store.load_version(repaired.version) is None
+
+
+def test_retention_keeps_current_and_recent_valid_fallbacks(tmp_path: Path) -> None:
+    store = PreparedBundleStore(tmp_path, retained_versions=3)
+    versions = []
+    for index in range(5):
+        bundle = store.promote(
+            prepare_bundle(
+                rows(float(index + 1)),
+                source_url="x",
+                fetched_at=f"2026-01-0{index + 1}T00:00:00+00:00",
+            )
+        )
+        versions.append(bundle.version)
+
+    remaining = {path.name for path in (tmp_path / "snapshots").iterdir() if path.is_dir()}
+    assert remaining == set(versions[-3:])
+    assert json.loads((tmp_path / "current.json").read_text())["version"] == versions[-1]
+
+
+def test_failed_promotion_preserves_current_and_fallback(tmp_path: Path, monkeypatch) -> None:
+    store = PreparedBundleStore(tmp_path)
+    first = store.promote(prepare_bundle(rows(1.0), source_url="x"))
+    second = store.promote(prepare_bundle(rows(2.0), source_url="x"))
+
+    def fail_write(directory, bundle):
+        raise OSError("simulated write failure")
+
+    monkeypatch.setattr(store, "_write_bundle_files", fail_write)
+    with pytest.raises(OSError, match="simulated write failure"):
+        store.promote(prepare_bundle(rows(5.0), source_url="x"))
+
+    assert json.loads((tmp_path / "current.json").read_text())["version"] == second.version
+    assert store.load_current().version == second.version
+    assert (tmp_path / "snapshots" / first.version).exists()
+    assert not list((tmp_path / "snapshots").glob(".staging-*"))
