@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How Budget Atlas Gets to Azure</title>
+  <style>
+    :root {
+      --ink: #10233f;
+      --muted: #526478;
+      --paper: #f6f3ec;
+      --panel: #ffffff;
+      --city-blue: #2a3b66;
+      --city-blue-dark: #172545;
+      --aqua: #ddebF2;
+      --gold: #e9c791;
+      --green: #24645b;
+      --red: #b95045;
+      --line: #b8c4cf;
+      --shadow: 0 10px 30px rgb(16 35 63 / 12%);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      color: var(--ink);
+      background: var(--paper);
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    a:focus-visible,
+    summary:focus-visible {
+      outline: 3px solid var(--gold);
+      outline-offset: 4px;
+      border-radius: 4px;
+    }
+
+    .hero {
+      padding: 5rem max(1.5rem, calc((100% - 74rem) / 2));
+      color: #ffffff;
+      background:
+        linear-gradient(120deg, var(--city-blue-dark), var(--city-blue) 68%, #425b91);
+    }
+
+    .eyebrow,
+    .kicker {
+      margin: 0 0 0.5rem;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow {
+      color: var(--gold);
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin-top: 0;
+      line-height: 1.18;
+    }
+
+    h1 {
+      max-width: 13ch;
+      margin-bottom: 1.25rem;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(2.6rem, 7vw, 5.6rem);
+      font-weight: 500;
+    }
+
+    h2 {
+      max-width: 24ch;
+      margin-bottom: 0.75rem;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      font-weight: 500;
+    }
+
+    h3 {
+      margin-bottom: 0.5rem;
+      font-size: 1.15rem;
+    }
+
+    p {
+      margin-top: 0;
+    }
+
+    .lede {
+      max-width: 62rem;
+      margin: 0;
+      color: #eef4ff;
+      font-size: clamp(1.1rem, 2.5vw, 1.45rem);
+    }
+
+    nav {
+      position: sticky;
+      z-index: 5;
+      top: 0;
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.8rem max(1.5rem, calc((100% - 74rem) / 2));
+      overflow-x: auto;
+      background: #ffffff;
+      border-bottom: 1px solid var(--line);
+      box-shadow: 0 4px 14px rgb(16 35 63 / 8%);
+    }
+
+    nav a {
+      flex: 0 0 auto;
+      padding: 0.4rem 0.7rem;
+      color: var(--city-blue);
+      font-size: 0.86rem;
+      font-weight: 700;
+      text-decoration: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+    }
+
+    nav a:hover {
+      background: var(--aqua);
+    }
+
+    main {
+      width: min(74rem, calc(100% - 3rem));
+      margin: 0 auto;
+    }
+
+    section {
+      padding: 5rem 0;
+      border-bottom: 1px solid var(--line);
+      scroll-margin-top: 5rem;
+    }
+
+    .section-intro {
+      max-width: 47rem;
+      margin-bottom: 2rem;
+      color: var(--muted);
+      font-size: 1.08rem;
+    }
+
+    .identity-grid,
+    .comparison-grid,
+    .split-grid {
+      display: grid;
+      gap: 1.25rem;
+    }
+
+    .identity-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .comparison-grid,
+    .split-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .card,
+    .lane,
+    .comparison-card,
+    .deploy-card,
+    .callout,
+    details {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .card,
+    .comparison-card,
+    .deploy-card,
+    .callout {
+      padding: 1.4rem;
+    }
+
+    .identity-card {
+      border-top: 6px solid var(--city-blue);
+    }
+
+    .identity-card:nth-child(2) {
+      border-top-color: var(--green);
+    }
+
+    .identity-card:nth-child(3) {
+      border-top-color: var(--gold);
+    }
+
+    .identity-mark {
+      display: inline-grid;
+      width: 2.5rem;
+      height: 2.5rem;
+      margin-bottom: 1rem;
+      place-items: center;
+      color: #ffffff;
+      font-weight: 800;
+      background: var(--city-blue);
+      border: 2px solid var(--city-blue-dark);
+      border-radius: 50%;
+    }
+
+    .identity-card:nth-child(2) .identity-mark {
+      background: var(--green);
+    }
+
+    .identity-card:nth-child(3) .identity-mark {
+      color: var(--ink);
+      background: var(--gold);
+    }
+
+    .plain-rule {
+      margin: 1.5rem 0 0;
+      padding: 1rem 1.25rem;
+      font-weight: 750;
+      background: var(--aqua);
+      border-left: 5px solid var(--city-blue);
+    }
+
+    .lane-stack {
+      display: grid;
+      gap: 1.5rem;
+    }
+
+    .lane {
+      padding: 1.5rem;
+      overflow: hidden;
+    }
+
+    .lane.employee {
+      border-left: 7px solid var(--city-blue);
+    }
+
+    .lane.deployment {
+      border-left: 7px solid var(--green);
+    }
+
+    .lane-flow {
+      display: flex;
+      align-items: stretch;
+      gap: 0.55rem;
+      margin-top: 1rem;
+      overflow-x: auto;
+      padding-bottom: 0.4rem;
+    }
+
+    .lane-step {
+      min-width: 9.2rem;
+      padding: 0.85rem;
+      font-weight: 700;
+      line-height: 1.3;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .arrow {
+      display: grid;
+      min-width: 5.5rem;
+      place-items: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 750;
+      text-align: center;
+    }
+
+    .arrow::after {
+      content: "  →";
+      color: var(--city-blue);
+      font-size: 1.25rem;
+    }
+
+    .badge-list,
+    .check-list,
+    .release-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .badge-list {
+      display: grid;
+      gap: 0.8rem;
+      counter-reset: badge;
+    }
+
+    .badge-list li {
+      position: relative;
+      min-height: 3rem;
+      padding: 0.8rem 1rem 0.8rem 4rem;
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      counter-increment: badge;
+    }
+
+    .badge-list li::before {
+      position: absolute;
+      top: 0.6rem;
+      left: 0.8rem;
+      display: grid;
+      width: 2.25rem;
+      height: 2.25rem;
+      place-items: center;
+      color: #ffffff;
+      font-weight: 800;
+      content: counter(badge);
+      background: var(--green);
+      border-radius: 50%;
+    }
+
+    .callout {
+      margin-top: 1.25rem;
+      border-left: 6px solid var(--red);
+    }
+
+    .callout.safe {
+      border-left-color: var(--green);
+    }
+
+    .callout h3 {
+      color: var(--red);
+    }
+
+    .callout.safe h3 {
+      color: var(--green);
+    }
+
+    .column-heading {
+      padding-bottom: 0.75rem;
+      border-bottom: 3px solid var(--city-blue);
+    }
+
+    .split-grid > article:nth-child(2) .column-heading {
+      border-bottom-color: var(--green);
+    }
+
+    .check-list,
+    .release-list {
+      display: grid;
+      gap: 0.6rem;
+    }
+
+    .check-list li,
+    .release-list li {
+      position: relative;
+      padding-left: 1.6rem;
+    }
+
+    .check-list li::before,
+    .release-list li::before {
+      position: absolute;
+      left: 0;
+      color: var(--green);
+      font-weight: 900;
+      content: "✓";
+    }
+
+    .evidence-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin: 1.5rem 0;
+    }
+
+    .evidence {
+      display: inline-block;
+      padding: 0.25rem 0.55rem;
+      color: var(--ink);
+      font-size: 0.78rem;
+      font-weight: 800;
+      line-height: 1.2;
+      text-transform: uppercase;
+      background: var(--aqua);
+      border: 1px solid var(--city-blue);
+      border-radius: 4px;
+    }
+
+    .evidence[data-evidence="recommended"] {
+      background: #e5f2ed;
+      border-color: var(--green);
+    }
+
+    .evidence[data-evidence="inference"] {
+      background: #fff4e1;
+      border-color: #8f641d;
+    }
+
+    .comparison-card:first-child {
+      border-top: 6px solid var(--city-blue);
+    }
+
+    .comparison-card:last-child {
+      border-top: 6px solid var(--green);
+    }
+
+    .comparison-card .evidence {
+      margin-bottom: 1rem;
+    }
+
+    code {
+      padding: 0.1rem 0.3rem;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.92em;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 3px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    table {
+      width: 100%;
+      min-width: 42rem;
+      border-collapse: collapse;
+      background: #ffffff;
+    }
+
+    caption {
+      padding: 1rem;
+      font-weight: 800;
+      text-align: left;
+      background: var(--aqua);
+    }
+
+    th,
+    td {
+      padding: 0.9rem 1rem;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      color: #ffffff;
+      background: var(--city-blue);
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .deploy-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      counter-reset: deploy;
+    }
+
+    .deploy-card {
+      position: relative;
+      padding-top: 3.8rem;
+      counter-increment: deploy;
+    }
+
+    .deploy-card::before {
+      position: absolute;
+      top: 1rem;
+      left: 1rem;
+      display: grid;
+      width: 2.15rem;
+      height: 2.15rem;
+      place-items: center;
+      color: #ffffff;
+      font-weight: 850;
+      content: counter(deploy);
+      background: var(--city-blue);
+      border-radius: 50%;
+    }
+
+    .stop-note {
+      margin: 0.75rem 0 0;
+      padding-top: 0.75rem;
+      color: #7e2e27;
+      font-size: 0.9rem;
+      font-weight: 700;
+      border-top: 2px solid var(--red);
+    }
+
+    .request {
+      margin: 2rem 0;
+      padding: 1.6rem;
+      color: #ffffff;
+      font-size: 1.18rem;
+      font-weight: 650;
+      background: var(--city-blue);
+      border: 3px solid var(--gold);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    details {
+      margin-top: 1.25rem;
+      padding: 0.9rem 1rem;
+    }
+
+    summary {
+      color: var(--city-blue);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    details > :last-child {
+      margin-bottom: 0;
+    }
+
+    footer {
+      padding: 2rem max(1.5rem, calc((100% - 74rem) / 2));
+      color: #ffffff;
+      background: var(--city-blue-dark);
+    }
+
+    footer p {
+      max-width: 70rem;
+      margin: 0;
+    }
+
+    @media (max-width: 900px) {
+      .deploy-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 720px) {
+      .hero {
+        padding-top: 3.5rem;
+        padding-bottom: 3.5rem;
+      }
+
+      main {
+        width: min(100% - 2rem, 74rem);
+      }
+
+      section {
+        padding: 3.5rem 0;
+      }
+
+      .identity-grid,
+      .comparison-grid,
+      .split-grid,
+      .deploy-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .lane-flow {
+        display: grid;
+        grid-template-columns: 1fr;
+        overflow: visible;
+      }
+
+      .lane-step {
+        min-width: 0;
+      }
+
+      .arrow {
+        min-width: 0;
+        min-height: 2.4rem;
+      }
+
+      .arrow::after {
+        content: "  ↓";
+      }
+    }
+
+    @media print {
+      :root {
+        --paper: #ffffff;
+        --panel: #ffffff;
+        --shadow: none;
+      }
+
+      html,
+      body,
+      .hero,
+      footer,
+      th,
+      .request {
+        color: #000000;
+        background: #ffffff;
+      }
+
+      nav {
+        display: none;
+      }
+
+      main {
+        width: 100%;
+      }
+
+      section {
+        padding: 1.2rem 0;
+      }
+
+      .card,
+      .lane,
+      .comparison-card,
+      .deploy-card,
+      .callout,
+      .request,
+      details,
+      table {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+
+      details > *:not(summary) {
+        display: block !important;
+      }
+
+      .table-wrap {
+        overflow: visible;
+        box-shadow: none;
+      }
+
+      table {
+        min-width: 0;
+      }
+
+      th,
+      td,
+      .request {
+        border: 1px solid #555555;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <p class="eyebrow">Sacramento Budget Atlas</p>
+    <h1>How Budget Atlas gets to Azure</h1>
+    <p class="lede">People use Microsoft Entra to enter the app; GitHub uses OIDC to update the app; the running app uses a separate runtime identity to retrieve its container image.</p>
+  </header>
+  <nav aria-label="Explainer sections">
+    <a href="#identity-overview">Three identities</a>
+    <a href="#two-lanes">Two workflows</a>
+    <a href="#oidc">OIDC</a>
+    <a href="#setup-vs-release">Setup vs release</a>
+    <a href="#measure-u-comparison">Measure U comparison</a>
+    <a href="#approval-map">Approvals</a>
+    <a href="#deploy-walkthrough">Deploy walkthrough</a>
+    <a href="#next-request">Next request</a>
+  </nav>
+  <main>
+    <section id="identity-overview">
+      <p class="kicker">Start here</p>
+      <h2>Three identities, three different jobs</h2>
+      <p class="section-intro">The employee badge, deployment robot, and runtime key are not interchangeable.</p>
+      <div class="identity-grid">
+        <article class="card identity-card">
+          <span class="identity-mark" aria-hidden="true">E</span>
+          <h3>Employee badge</h3>
+          <p>Lets an approved City employee sign in and open Budget Atlas.</p>
+          <p><strong>Boundary:</strong> people and the approved access group.</p>
+        </article>
+        <article class="card identity-card">
+          <span class="identity-mark" aria-hidden="true">D</span>
+          <h3>Deployment robot</h3>
+          <p>Lets an approved GitHub workflow update Azure after its checks pass.</p>
+          <p><strong>Boundary:</strong> deployment changes allowed by Azure RBAC.</p>
+        </article>
+        <article class="card identity-card">
+          <span class="identity-mark" aria-hidden="true">R</span>
+          <h3>Runtime key</h3>
+          <p>Lets the running Container App retrieve its container image.</p>
+          <p><strong>Boundary:</strong> read-only image pulls from the registry.</p>
+        </article>
+      </div>
+      <p class="plain-rule">Separation keeps a person, a release workflow, and a running service from borrowing one another's permissions.</p>
+      <details>
+        <summary>Why are the identities separated?</summary>
+        <p>Each identity receives only the access its job needs. If one boundary fails, the other two do not automatically inherit that access. The deployment identity can update infrastructure, the runtime identity can only retrieve an image, and employee access is checked separately by Microsoft Entra.</p>
+      </details>
+    </section>
+
+    <section id="two-lanes">
+      <p class="kicker">Keep the lanes separate</p>
+      <h2>Two workflows that never share a login</h2>
+      <p class="section-intro">One lane admits employees; the other safely releases code.</p>
+      <div class="lane-stack">
+        <article class="lane employee">
+          <h3>Employee access lane</h3>
+          <div class="lane-flow">
+            <div class="lane-step">Employee browser</div>
+            <div class="arrow">signs in</div>
+            <div class="lane-step">Microsoft Entra sign-in</div>
+            <div class="arrow">checks access</div>
+            <div class="lane-step">Budget Atlas access group check</div>
+            <div class="arrow">opens</div>
+            <div class="lane-step">Budget Atlas</div>
+          </div>
+        </article>
+        <article class="lane deployment">
+          <h3>Deployment lane</h3>
+          <div class="lane-flow">
+            <div class="lane-step">Developer starts the workflow</div>
+            <div class="arrow">runs</div>
+            <div class="lane-step">quality and security checks</div>
+            <div class="arrow">proves identity</div>
+            <div class="lane-step">GitHub OIDC proof</div>
+            <div class="arrow">authorizes</div>
+            <div class="lane-step">Azure deployment identity</div>
+            <div class="arrow">pushes image</div>
+            <div class="lane-step">container registry</div>
+            <div class="arrow">updates app</div>
+            <div class="lane-step">Container App update</div>
+          </div>
+        </article>
+      </div>
+      <details>
+        <summary>OIDC versus employee sign-in</summary>
+        <p>Employee sign-in answers, "May this person enter Budget Atlas?" GitHub OIDC answers, "May this specific approved workflow make a limited Azure change right now?" Neither answer grants the other kind of access.</p>
+      </details>
+    </section>
+
+    <section id="oidc">
+      <p class="kicker">Temporary trust</p>
+      <h2>OIDC is a temporary verified badge</h2>
+      <p class="section-intro">GitHub proves which approved workflow is asking Azure for short-lived access.</p>
+      <ol class="badge-list">
+        <li>GitHub presents a temporary signed badge.</li>
+        <li>Azure checks the repository and approved deployment context, including the expected environment, audience, and issuer.</li>
+        <li>Azure issues a short-lived token to the deployment robot.</li>
+        <li>Azure RBAC limits allowed changes.</li>
+      </ol>
+      <div class="callout safe">
+        <h3>The practical protection</h3>
+        <p><strong>No reusable Azure password is saved in GitHub.</strong> The proof is temporary and is accepted only inside the approved boundary.</p>
+      </div>
+      <div class="callout">
+        <h3>OIDC does not</h3>
+        <p>OIDC does not give employees access to Budget Atlas. It also does not automatically grant GitHub administrator access or permission to change every Azure resource.</p>
+      </div>
+      <details>
+        <summary>Exact GitHub and Azure terminology</summary>
+        <p>GitHub's workflow requests an OpenID Connect identity token. Azure validates the federated credential's issuer, audience, and subject, then issues short-lived access. Azure role-based access control, commonly called RBAC, defines which registry and Container Apps actions the deployment identity can perform.</p>
+      </details>
+    </section>
+
+    <section id="setup-vs-release">
+      <p class="kicker">Different moments, different authority</p>
+      <h2>One-time setup versus a routine release</h2>
+      <p class="section-intro">Administrators establish the boundaries once; routine releases operate inside them.</p>
+      <div class="split-grid">
+        <article class="card">
+          <h3 class="column-heading">One-time setup</h3>
+          <ul class="check-list">
+            <li>Obtain shared-platform approval.</li>
+            <li>Create a repository-specific deployment identity.</li>
+            <li>Configure its federated credential.</li>
+            <li>Make scoped role assignments.</li>
+            <li>Configure the Entra application.</li>
+            <li>Create or choose the employee access group.</li>
+            <li>Protect the GitHub environment.</li>
+          </ul>
+          <p class="plain-rule">Elevated resource or application ownership may be required here.</p>
+        </article>
+        <article class="card">
+          <h3 class="column-heading">Routine release</h3>
+          <ol class="release-list">
+            <li>Choose a commit.</li>
+            <li>Run tests and formatting.</li>
+            <li>Build one immutable image.</li>
+            <li>Create an SBOM.</li>
+            <li>Scan the exact image.</li>
+            <li>Exchange OIDC proof.</li>
+            <li>Push by digest.</li>
+            <li>Update the app.</li>
+            <li>Wait for health probes.</li>
+          </ol>
+          <p class="plain-rule">A routine release should not require a human Azure administrator each time.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="measure-u-comparison">
+      <p class="kicker">Evidence and recommendation</p>
+      <h2>What Measure U proves, and what Budget Atlas should change</h2>
+      <p class="section-intro">Shared infrastructure can be reused while each repository keeps separate identities and access controls.</p>
+      <div class="evidence-legend" aria-label="Evidence legend">
+        <span class="evidence" data-evidence="direct">Direct evidence</span>
+        <span class="evidence" data-evidence="recommended">Recommended</span>
+        <span class="evidence" data-evidence="inference">Inference limit</span>
+      </div>
+      <div class="comparison-grid">
+        <article class="comparison-card">
+          <span class="evidence" data-evidence="direct">Direct evidence</span>
+          <h3>Measure U today</h3>
+          <ul class="check-list">
+            <li>Uses shared <code>saccity-shared-env</code>.</li>
+            <li>Uses shared <code>saccitydaoregistry</code>.</li>
+            <li>Has a repository and <code>main</code>-branch-bound federated identity.</li>
+            <li>Has broad deployment permissions on shared resources.</li>
+            <li>Has registry admin enabled.</li>
+            <li>Uses a registry password secret.</li>
+            <li>Has Container Apps authentication disabled.</li>
+          </ul>
+        </article>
+        <article class="comparison-card">
+          <span class="evidence" data-evidence="recommended">Recommended</span>
+          <h3>Budget Atlas variation</h3>
+          <ul class="check-list">
+            <li>Reuse the shared environment, registry, and logging.</li>
+            <li>Create a repository-specific deployment identity.</li>
+            <li>Create a separate runtime pull identity.</li>
+            <li>Enable Entra authentication and access-group assignment.</li>
+            <li>Scale from zero to one.</li>
+          </ul>
+        </article>
+      </div>
+      <div class="callout">
+        <span class="evidence" data-evidence="inference">Inference limit</span>
+        <h3>Evidence boundary</h3>
+        <p>Because <strong>the exact Measure U workflow YAML was not available</strong>, individual commands were not inspected. The comparison describes observed Azure configuration, not an unverified claim about every release step.</p>
+      </div>
+      <details>
+        <summary>Measure U evidence limitation</summary>
+        <p>The current GitHub account could not inspect the exact workflow. Direct evidence covers the captured read-only Azure resource configuration. Any proposed similarity in workflow behavior is an inference and is labeled separately.</p>
+      </details>
+    </section>
+
+    <section id="approval-map">
+      <p class="kicker">Scoped ownership</p>
+      <h2>Who approves what</h2>
+      <p class="section-intro">Approval follows the resource boundary, not one universal administrator role.</p>
+      <div class="table-wrap">
+        <table>
+          <caption>Approval boundary by setup or release action</caption>
+          <thead>
+            <tr>
+              <th scope="col">Action</th>
+              <th scope="col">Likely approver</th>
+              <th scope="col">When</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Platform reuse</td>
+              <td>Niva or DAO/DBA platform owner</td>
+              <td>One time</td>
+            </tr>
+            <tr>
+              <td>Deployment identity creation and federated credential</td>
+              <td>DBA resource Contributor</td>
+              <td>One time</td>
+            </tr>
+            <tr>
+              <td>Azure role assignment</td>
+              <td>DBA resource Owner, RBAC Administrator, or User Access Administrator</td>
+              <td>One time</td>
+            </tr>
+            <tr>
+              <td>Employee login application</td>
+              <td>Application owner or Entra application administrator</td>
+              <td>One time</td>
+            </tr>
+            <tr>
+              <td>Employee access assignment</td>
+              <td>Enterprise application owner or Entra application administrator</td>
+              <td>One time</td>
+            </tr>
+            <tr>
+              <td>Group membership</td>
+              <td>Group owner</td>
+              <td>As staff access changes</td>
+            </tr>
+            <tr>
+              <td>Routine GitHub release approval</td>
+              <td>GitHub environment reviewer</td>
+              <td>Each protected release</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="plain-rule">These are scoped roles. A Global Administrator is not expected for routine deployments.</p>
+    </section>
+
+    <section id="deploy-walkthrough">
+      <p class="kicker">Release path</p>
+      <h2>What happens when I press deploy?</h2>
+      <p class="section-intro">Eight guarded steps move one tested image from GitHub to Azure.</p>
+      <div class="deploy-grid">
+        <article class="deploy-card" data-deploy-step="1">
+          <h3>Checkout</h3>
+          <p>GitHub checks out the selected commit.</p>
+        </article>
+        <article class="deploy-card" data-deploy-step="2">
+          <h3>Python quality and tests</h3>
+          <p>Lint, formatting, and the non-live test suite verify the code.</p>
+          <p class="stop-note">Tests stop before Azure login.</p>
+        </article>
+        <article class="deploy-card" data-deploy-step="3">
+          <h3>Immutable image build</h3>
+          <p>Docker builds one image for this release.</p>
+        </article>
+        <article class="deploy-card" data-deploy-step="4">
+          <h3>SBOM and vulnerability scan</h3>
+          <p>The exact image receives a software inventory and security scan.</p>
+          <p class="stop-note">A vulnerability gate stops before upload.</p>
+        </article>
+        <article class="deploy-card" data-deploy-step="5">
+          <h3>OIDC request</h3>
+          <p>GitHub requests short-lived Azure access for the approved workflow.</p>
+        </article>
+        <article class="deploy-card" data-deploy-step="6">
+          <h3>Registry push and digest resolution</h3>
+          <p>The scanned image is pushed, and Azure resolves its immutable digest.</p>
+        </article>
+        <article class="deploy-card" data-deploy-step="7">
+          <h3>Container App revision update</h3>
+          <p>Azure updates only the image digest and revision suffix.</p>
+        </article>
+        <article class="deploy-card" data-deploy-step="8">
+          <h3>Health polling and traffic protection</h3>
+          <p>Azure waits for startup, liveness, and readiness probes.</p>
+          <p class="stop-note">An unhealthy or timed-out revision leaves the prior single revision serving traffic.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="next-request">
+      <p class="kicker">Current decision</p>
+      <h2>The next conversation</h2>
+      <p class="section-intro">Ask the DBA platform owner to approve shared-platform reuse and identify the scoped RBAC approver.</p>
+      <div class="request">Can Budget Atlas reuse saccity-shared-env and saccitydaoregistry with a new repository-specific GitHub OIDC identity? If so, can you assign its ACR and Container Apps roles, or identify the DBA RBAC owner?</div>
+      <p>The answer establishes whether Budget Atlas can use the shared platform while preserving its own deployment and runtime boundaries.</p>
+    </section>
+  </main>
+  <footer><p>This explainer contains resource names and workflow concepts, but no tenant, subscription, principal, credential, or employee-private identifiers.</p></footer>
+</body>
+</html>
