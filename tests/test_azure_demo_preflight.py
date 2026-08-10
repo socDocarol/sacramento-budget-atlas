@@ -116,7 +116,13 @@ def _run_preflight(tmp_path: Path, fake_az: Path) -> subprocess.CompletedProcess
 
 
 def _terminal_text(value: str) -> str:
-    return " ".join(ANSI_ESCAPE.sub("", value).split())
+    without_ansi = ANSI_ESCAPE.sub("", value)
+    without_continuation_markers = re.sub(r"\s+\|\s+", " ", without_ansi)
+    return " ".join(without_continuation_markers.split())
+
+
+def test_terminal_text_normalizes_powershell_linux_error_wrapping() -> None:
+    assert _terminal_text("Request the necessary\n | Azure role") == "Request the necessary Azure role"
 
 
 def test_preflight_reports_read_only_prerequisites_without_identifiers(tmp_path: Path) -> None:
