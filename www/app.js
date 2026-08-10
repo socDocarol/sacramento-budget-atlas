@@ -49,9 +49,10 @@
       lastScrollY: 0,
       ticking: false,
     },
-    overviewYear: null,
     overviewYearFocus: null,
     overviewChartObserver: null,
+    overviewMeasureFocus: null,
+    overviewKpiObserver: null,
     detail: {
       element: null,
       drawer: null,
@@ -309,7 +310,6 @@
     var trigger = event.target.closest && event.target.closest("[data-overview-select]");
     if (!trigger) {
       if (event.target.closest && event.target.closest("#overview-reset")) {
-        state.overviewYear = "2027";
         state.overviewYearFocus = null;
         setOverviewYearPressed("2027");
         clearClientSelectionPresentation();
@@ -346,7 +346,7 @@
   }
 
   function setOverviewYearPressed(year) {
-    document.querySelectorAll("[data-overview-year]").forEach(function (control) {
+    document.querySelectorAll(".city-overview-year-control[data-overview-year]").forEach(function (control) {
       control.setAttribute(
         "aria-pressed",
         control.getAttribute("data-overview-year") === year ? "true" : "false"
@@ -355,27 +355,48 @@
   }
 
   function activeOverviewYear() {
-    if (state.overviewYear) return "FY" + state.overviewYear;
     return ((document.getElementById("overview-context_year") || {}).textContent || "").trim();
   }
 
   function sendOverviewMeasure(event) {
     var trigger = event.target.closest && event.target.closest("[data-overview-measure]");
     if (!trigger || !window.Shiny || !window.Shiny.setInputValue) return;
+    var measure = trigger.getAttribute("data-overview-measure");
+    if (document.activeElement === trigger) state.overviewMeasureFocus = measure;
     var group = trigger.closest(".city-story-studio__live-kpis") || document;
     setOverviewPressed(group, "[data-overview-measure]", trigger);
-    window.Shiny.setInputValue("overview-measure_request", trigger.getAttribute("data-overview-measure"), {
+    window.Shiny.setInputValue("overview-measure_request", measure, {
       priority: "event"
     });
   }
 
+  function restoreOverviewMeasureFocus() {
+    if (!state.overviewMeasureFocus) return;
+    var measure = state.overviewMeasureFocus;
+    var target = document.querySelector('[data-overview-measure="' + measure + '"]');
+    if (!target) return;
+    window.requestAnimationFrame(function () {
+      if (!target.isConnected) return;
+      target.focus({ preventScroll: true });
+      state.overviewMeasureFocus = null;
+    });
+  }
+
+  function observeOverviewKpis() {
+    var root = document.getElementById("overview-kpis");
+    if (!root || state.overviewKpiObserver) return;
+    state.overviewKpiObserver = new MutationObserver(restoreOverviewMeasureFocus);
+    state.overviewKpiObserver.observe(root, { childList: true, subtree: true });
+  }
+
   function sendOverviewYear(event) {
-    var trigger = event.target.closest && event.target.closest("[data-overview-year]");
+    var trigger = event.target.closest && event.target.closest(
+      ".city-overview-year-control[data-overview-year]"
+    );
     if (!trigger || !window.Shiny || !window.Shiny.setInputValue) return;
     var year = trigger.getAttribute("data-overview-year");
     if (!year) return;
-    state.overviewYear = year;
-    state.overviewYearFocus = trigger.matches(".city-overview-year-control") ? year : null;
+    state.overviewYearFocus = document.activeElement === trigger ? { year: year } : null;
     setOverviewYearPressed(year);
     window.Shiny.setInputValue("overview-year_request", { year: year }, { priority: "event" });
   }
@@ -383,7 +404,7 @@
   function handleOverviewControlKeydown(event) {
     if (event.key !== "Enter" && event.key !== " ") return;
     var trigger = event.target.closest && event.target.closest(
-      "[data-overview-measure], [data-overview-year]"
+      "[data-overview-measure]"
     );
     if (!trigger) return;
     if (trigger.matches("button")) return;
@@ -403,11 +424,8 @@
       var year = String(values[index] || "").replace(/^FY/, "");
       if (!/^\d{4}$/.test(year)) return;
       point.setAttribute("data-overview-year", year);
-      point.setAttribute("role", "button");
-      point.setAttribute("tabindex", "0");
-      point.setAttribute("aria-label", "View FY" + year + " budget context");
-      point.setAttribute("title", "View FY" + year + " budget context");
-      point.setAttribute("aria-pressed", activeYear === "FY" + year ? "true" : "false");
+      point.setAttribute("title", "View FY" + year + " details");
+      point.toggleAttribute("data-overview-selected", activeYear === "FY" + year);
     });
   }
 
@@ -442,8 +460,8 @@
       button.textContent = label;
       button.setAttribute("data-overview-year", year);
       button.setAttribute("aria-pressed", activeYear === label ? "true" : "false");
-      button.setAttribute("aria-label", "View " + label + " budget context");
-      button.setAttribute("title", "View " + label + " budget context");
+      button.setAttribute("aria-label", "View " + label + " details");
+      button.setAttribute("title", "View " + label + " details");
       var expectedPosition = group.children[index];
       if (expectedPosition !== button) group.insertBefore(button, expectedPosition || null);
       retained[year] = true;
@@ -452,7 +470,7 @@
       if (!retained[button.getAttribute("data-overview-year")]) button.remove();
     });
     if (state.overviewYearFocus) {
-      var focusYear = state.overviewYearFocus;
+      var focusYear = state.overviewYearFocus.year;
       var focusTarget = group.querySelector(
         '.city-overview-year-control[data-overview-year="' + focusYear + '"]'
       );
@@ -1303,6 +1321,8 @@
   document.addEventListener("shiny:recalculated", function (event) {
     discoverDataFrames(event.target);
     observeOverviewChart();
+    observeOverviewKpis();
+    restoreOverviewMeasureFocus();
     window.requestAnimationFrame(decorateOverviewYearControls);
     window.requestAnimationFrame(renderOverviewYearControls);
     window.setTimeout(decorateOverviewYearControls, 250);
@@ -1325,6 +1345,7 @@
     discoverDataFrames(document);
     selectHashView();
     observeOverviewChart();
+    observeOverviewKpis();
     [500, 1500, 3000, 5000].forEach(function (delay) {
       window.setTimeout(function () {
         decorateOverviewYearControls();

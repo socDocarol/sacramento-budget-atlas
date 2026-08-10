@@ -142,52 +142,93 @@ def test_overview_measure_and_year_controls_update_context_without_opening_detai
     expect(page.locator("#overview-kpis .city-stat-card__value").first).to_have_text(
         re.compile(r"^\$[\d,]+$")
     )
+    numeric_kpi_values = [
+        value
+        for value in page.locator("#overview-kpis .city-stat-card__value").all_text_contents()
+        if "$" in value
+    ]
+    assert len(numeric_kpi_values) == 3
+    assert all(re.fullmatch(r"[+-]?\$[\d,]+", value) for value in numeric_kpi_values)
     expect(year_group).to_have_attribute("role", "group")
     chart_years = page.locator("#overview-trend_chart").evaluate(
         "root => root.querySelector('.js-plotly-plot').data[0].x.map(String)"
     )
     expect(year_group.locator(".city-overview-year-control")).to_have_text(chart_years)
 
+    expense_caption = page.locator("#overview-trend_summary").inner_text()
     revenue.click()
     expect(revenue).to_have_attribute("aria-pressed", "true", timeout=20_000)
     expect(expense).to_have_attribute("aria-pressed", "false", timeout=20_000)
     expect(drawer).to_be_hidden()
     expect(page.locator("#overview-trend_summary")).to_contain_text("FY2027", timeout=20_000)
+    expect(page.locator("#overview-trend_summary")).not_to_have_text(expense_caption, timeout=20_000)
 
+    revenue_caption = page.locator("#overview-trend_summary").inner_text()
     expense.focus()
     page.keyboard.press("Enter")
+    expect(page.locator("#overview-trend_summary")).not_to_have_text(revenue_caption, timeout=20_000)
     expect(expense).to_have_attribute("aria-pressed", "true", timeout=20_000)
+    expect(expense).to_be_focused()
+    expense_caption = page.locator("#overview-trend_summary").inner_text()
     revenue.focus()
     page.keyboard.press("Space")
+    expect(page.locator("#overview-trend_summary")).not_to_have_text(expense_caption, timeout=20_000)
     expect(revenue).to_have_attribute("aria-pressed", "true", timeout=20_000)
+    expect(revenue).to_be_focused()
     expect(drawer).to_be_hidden()
+
+    kpi_values = page.locator("#overview-kpis .city-stat-card__value")
+    all_funds_kpis = kpi_values.all_text_contents()
+    all_funds_caption = page.locator("#overview-trend_summary").inner_text()
+    page.locator("#overview-fund_scope").select_option("enterprise_funds")
+    expect(page.locator("#overview-fund_scope")).to_have_value("enterprise_funds", timeout=20_000)
+    for index, prior_value in enumerate(all_funds_kpis):
+        expect(kpi_values.nth(index)).not_to_have_text(prior_value, timeout=20_000)
+    expect(page.locator("#overview-trend_summary")).not_to_have_text(all_funds_caption, timeout=20_000)
+    scoped_numeric_values = [value for value in kpi_values.all_text_contents() if "$" in value]
+    assert len(scoped_numeric_values) == 3
+    assert all(re.fullmatch(r"[+-]?\$[\d,]+", value) for value in scoped_numeric_values)
+    page.locator("#overview-reset").click()
+    expect(page.locator("#overview-fund_scope")).to_have_value("all_funds", timeout=20_000)
+    expect(expense).to_have_attribute("aria-pressed", "true", timeout=20_000)
+
+    expect(chart_year_2026).to_have_attribute("title", "View FY2026 details")
+    semantic_year_2026 = page.locator('.city-overview-year-control[data-overview-year="2026"]')
+    expect(semantic_year_2026).to_have_attribute("aria-label", "View FY2026 details")
+    expect(semantic_year_2026).to_have_attribute("title", "View FY2026 details")
+
+    keyboard_year_2025.focus()
+    page.keyboard.press("Enter")
+    expect(page.locator("#overview-context_year")).to_have_text("FY2025", timeout=20_000)
+    expect(keyboard_year_2025).to_be_focused()
 
     top_kpis_before = [kpi_cards.nth(index).inner_text() for index in (0, 1)]
     lower_kpis_before = [kpi_cards.nth(index).inner_text() for index in (2, 3)]
     scopes_before = page.locator("#overview-fund_scopes").inner_text()
-
-    expect(chart_year_2026).to_have_attribute("role", "button")
-    expect(chart_year_2026).to_have_attribute("tabindex", "0")
-    chart_year_2026.click(force=True)
+    plot_drag_layer = page.locator("#overview-trend_chart .nsewdrag")
+    bar_position = chart_year_2026.evaluate(
+        """point => {
+            const bar = point.querySelector('path').getBoundingClientRect();
+            const drag = point.closest('.js-plotly-plot').querySelector('.nsewdrag')
+                .getBoundingClientRect();
+            return {
+                x: bar.x + bar.width / 2 - drag.x,
+                y: bar.y + bar.height / 2 - drag.y
+            };
+        }"""
+    )
+    plot_drag_layer.hover(position=bar_position)
+    expect(page.locator("#overview-trend_chart .hoverlayer .hovertext")).to_be_visible()
+    plot_drag_layer.click(position=bar_position)
     expect(page.locator("#overview-context_year")).to_have_text("FY2026", timeout=20_000)
     expect(page.locator("#overview-trend_summary")).to_contain_text("FY2026", timeout=20_000)
-    expect(chart_year_2026).to_have_attribute("aria-pressed", "true", timeout=20_000)
-    expect(page.locator('.city-overview-year-control[data-overview-year="2026"]')).to_have_attribute(
-        "aria-pressed", "true", timeout=20_000
-    )
+    expect(chart_year_2026).to_have_attribute("data-overview-selected", "", timeout=20_000)
+    expect(semantic_year_2026).to_have_attribute("aria-pressed", "true", timeout=20_000)
     assert [kpi_cards.nth(index).inner_text() for index in (0, 1)] != top_kpis_before
     assert [kpi_cards.nth(index).inner_text() for index in (2, 3)] != lower_kpis_before
     assert page.locator("#overview-fund_scopes").inner_text() != scopes_before
     expect(drawer).to_be_hidden()
 
-    keyboard_year_2025.focus()
-    page.keyboard.press("Space")
-    expect(page.locator("#overview-context_year")).to_have_text("FY2025", timeout=20_000)
-    expect(keyboard_year_2025).to_be_focused()
-    expect(keyboard_year_2025).to_have_attribute("aria-pressed", "true")
-    expect(page.locator('#overview-trend_chart [data-overview-year="2025"]')).to_have_attribute(
-        "aria-pressed", "true"
-    )
     page.locator("#overview-reset").click()
     expect(page.locator("#overview-context_year")).to_have_text("FY2027", timeout=20_000)
     expect(expense).to_have_attribute("aria-pressed", "true", timeout=20_000)
