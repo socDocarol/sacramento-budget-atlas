@@ -1,6 +1,6 @@
 param(
-    [string]$ResourceGroupName = 'rg-sac-budget-atlas-demo-wus2',
-    [string]$ContainerAppName = 'ca-sac-budget-atlas-demo',
+    [string]$ResourceGroupName = 'DBA',
+    [string]$ContainerAppName = 'ca-sac-budget-atlas-public-pilot',
     [string]$BrowserSessionRevisionName,
     [int]$BrowserSessionDurationMinutes = 0,
     [switch]$BrowserSessionPassed,
@@ -9,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$runtimeIdentityName = 'id-sac-budget-atlas-runtime-public-pilot'
 
 function Invoke-AzJson {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
@@ -37,13 +38,22 @@ function Invoke-WebProbe {
     $client = New-Object System.Net.Http.HttpClient($handler)
     try {
         $response = $client.GetAsync($Uri).GetAwaiter().GetResult()
+        $headers = @{}
+        foreach ($header in $response.Headers) {
+            $headers[$header.Key] = $header.Value -join ', '
+        }
+        foreach ($header in $response.Content.Headers) {
+            $headers[$header.Key] = $header.Value -join ', '
+        }
         return [pscustomobject]@{
             StatusCode = [int]$response.StatusCode
             Location = if ($null -ne $response.Headers.Location) { $response.Headers.Location.ToString() } else { '' }
+            Headers = $headers
+            Body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
         }
     }
     catch {
-        return [pscustomobject]@{ StatusCode = 0; Location = '' }
+        return [pscustomobject]@{ StatusCode = 0; Location = ''; Headers = @{}; Body = '' }
     }
     finally {
         $client.Dispose()
@@ -79,12 +89,19 @@ if ([string]::IsNullOrWhiteSpace($fqdn)) {
 }
 
 $httpsProbe = Invoke-WebProbe -Uri "https://$fqdn/"
-if (@(301, 302, 303, 307, 308) -notcontains [int]$httpsProbe.StatusCode) {
-    throw "Unauthenticated HTTPS root returned $($httpsProbe.StatusCode) instead of an Entra redirect."
+if ([int]$httpsProbe.StatusCode -ne 200) {
+    throw "Anonymous HTTPS root returned $($httpsProbe.StatusCode) instead of application content."
 }
-if ($httpsProbe.Location -notmatch '^https://login\.microsoftonline\.com/' -and
-    $httpsProbe.Location -notmatch '/\.auth/login/aad') {
-    throw "Unauthenticated HTTPS root did not redirect to Microsoft Entra authentication."
+if ($httpsProbe.Headers.'X-Robots-Tag' -cne 'noindex, nofollow') {
+    throw 'Anonymous application responses must include X-Robots-Tag: noindex, nofollow.'
+}
+
+$robotsProbe = Invoke-WebProbe -Uri "https://$fqdn/robots.txt"
+if ([int]$robotsProbe.StatusCode -ne 200 -or $robotsProbe.Body -notmatch '(?m)^Disallow: /\s*$') {
+    throw 'robots.txt must return HTTP 200 and disallow all cooperative crawlers.'
+}
+if ($robotsProbe.Headers.'X-Robots-Tag' -cne 'noindex, nofollow') {
+    throw 'robots.txt must include X-Robots-Tag: noindex, nofollow.'
 }
 
 $httpProbe = Invoke-WebProbe -Uri "http://$fqdn/"
@@ -97,6 +114,9 @@ if ([int]$httpProbe.StatusCode -ne 0 -and
     throw 'Plain HTTP redirected to a non-HTTPS destination.'
 }
 
+if ($app.properties.workloadProfileName -cne 'Consumption') {
+    throw 'The public pilot must run on the Consumption workload profile.'
+}
 if ($app.properties.configuration.activeRevisionsMode -cne 'Single') {
     throw 'Container App revision mode must be Single.'
 }
@@ -111,6 +131,17 @@ if ([int]$app.properties.template.scale.minReplicas -ne 0 -or
     throw 'Container App scale must remain exactly zero to one replicas.'
 }
 
+$identityIds = @($app.identity.userAssignedIdentities.PSObject.Properties.Name)
+if ($identityIds.Count -ne 1 -or $identityIds[0] -notmatch "/$runtimeIdentityName$") {
+    throw "The Container App must use only runtime identity '$runtimeIdentityName'."
+}
+$registries = @($app.properties.configuration.registries)
+if ($registries.Count -ne 1 -or
+    $registries[0].server -cne 'saccitydaoregistry.azurecr.io' -or
+    $registries[0].identity -cne $identityIds[0]) {
+    throw 'The Container App must pull from the shared registry through its runtime identity.'
+}
+
 $revisions = Invoke-AzJson @(
     'containerapp', 'revision', 'list', '--name', $ContainerAppName,
     '--resource-group', $ResourceGroupName, '--output', 'json'
@@ -121,13 +152,17 @@ if ($activeRevisions.Count -ne 1) {
 }
 $activeRevision = $activeRevisions[0]
 $container = @($activeRevision.properties.template.containers | Where-Object { $_.name -ceq 'budget-atlas' })[0]
-if ($container.image -notmatch '@sha256:[0-9a-f]{64}$') {
-    throw 'The active revision does not use an immutable SHA-256 image digest.'
+if ($container.image -notmatch '^saccitydaoregistry\.azurecr\.io/budget-atlas@sha256:[0-9a-f]{64}$') {
+    throw 'The active revision does not use an immutable digest from the approved shared registry repository.'
 }
 
 $allowedHosts = @($container.env | Where-Object { $_.name -ceq 'APP_ALLOWED_HOSTS' })
 if ($allowedHosts.Count -ne 1 -or $allowedHosts[0].value -cne $fqdn) {
     throw 'APP_ALLOWED_HOSTS must exactly equal the Container App FQDN.'
+}
+$manualRefresh = @($container.env | Where-Object { $_.name -ceq 'BUDGET_MANUAL_REFRESH_ENABLED' })
+if ($manualRefresh.Count -ne 1 -or $manualRefresh[0].value -cne '0') {
+    throw 'BUDGET_MANUAL_REFRESH_ENABLED must remain 0.'
 }
 if (@($container.env | Where-Object { $_.name -ceq 'SHINY_TESTMODE' }).Count -ne 0) {
     throw 'SHINY_TESTMODE is forbidden in the Azure deployment.'
@@ -139,7 +174,7 @@ $replicas = Invoke-AzJson @(
 )
 $replica = @($replicas)[0]
 if ($null -eq $replica) {
-    throw 'The active revision has no running replica. Run Warm-AzureDemo.ps1 first.'
+    throw 'The active revision has no running replica. Run Warm-AzurePublicPilot.ps1 first.'
 }
 
 $uid = Invoke-InReplica -RevisionName $activeRevision.name -ReplicaName $replica.name -Command 'id -u'
@@ -156,8 +191,8 @@ if ($liveStatus -notmatch '(?m)^\s*200\s*$' -or $readyStatus -notmatch '(?m)^\s*
 
 if (-not $BrowserSessionPassed -or $BrowserSessionDurationMinutes -lt 30 -or
     $BrowserSessionRevisionName -cne $activeRevision.name) {
-    throw "Record a passing authenticated browser session of at least 30 minutes for active revision '$($activeRevision.name)' and rerun with matching browser-session evidence."
+    throw "Record a passing anonymous Shiny WebSocket session of at least 30 minutes for active revision '$($activeRevision.name)' and rerun with matching evidence."
 }
 
-Write-Output "Azure demo deployment smoke test passed for https://$fqdn/."
-Write-Output "Verified the 30-minute authenticated browser session for revision $($activeRevision.name)."
+Write-Output "Azure public pilot deployment smoke test passed."
+Write-Output "Verified the 30-minute anonymous Shiny WebSocket session for revision $($activeRevision.name)."

@@ -90,7 +90,7 @@ jobs:
   resource-profile:
     name: Azure resource profile (0.5 CPU / 1 GiB)
     if: >-
-      github.ref == 'refs/heads/feat/azure-container-apps-demo' ||
+      github.ref == 'refs/heads/feat/azure-container-apps-public-pilot' ||
       inputs.run_resource_profile == true
     runs-on: ubuntu-24.04
     timeout-minutes: 20

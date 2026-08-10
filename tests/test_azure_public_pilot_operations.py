@@ -9,23 +9,34 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SMOKE_SCRIPT = ROOT / "scripts" / "Test-AzureDemoDeployment.ps1"
-WARM_SCRIPT = ROOT / "scripts" / "Warm-AzureDemo.ps1"
-FQDN = "ca-sac-budget-atlas-demo.purplepond.westus2.azurecontainerapps.io"
-REVISION = "ca-sac-budget-atlas-demo--sha-0123456789ab"
+SMOKE_SCRIPT = ROOT / "scripts" / "Test-AzurePublicPilotDeployment.ps1"
+WARM_SCRIPT = ROOT / "scripts" / "Warm-AzurePublicPilot.ps1"
+FQDN = "ca-sac-budget-atlas-public-pilot.example.westus2.azurecontainerapps.io"
+REVISION = "ca-sac-budget-atlas-public-pilot--sha-0123456789ab"
+RUNTIME_IDENTITY = "/subscriptions/hidden/resourceGroups/DBA/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-sac-budget-atlas-runtime-public-pilot"
 
 
 def _powershell() -> str:
     executable = shutil.which("pwsh") or shutil.which("powershell")
     if executable is None:
-        pytest.skip("PowerShell is required to exercise the Azure operations scripts")
+        pytest.skip("PowerShell is required to exercise Azure operations scripts")
     return executable
 
 
 def _write_fakes(tmp_path: Path) -> tuple[Path, Path]:
+    container = {
+        "name": "budget-atlas",
+        "image": "saccitydaoregistry.azurecr.io/budget-atlas@sha256:" + "a" * 64,
+        "env": [
+            {"name": "APP_ALLOWED_HOSTS", "value": FQDN},
+            {"name": "BUDGET_MANUAL_REFRESH_ENABLED", "value": "0"},
+        ],
+    }
     app = {
+        "identity": {"type": "UserAssigned", "userAssignedIdentities": {RUNTIME_IDENTITY: {}}},
         "properties": {
             "latestRevisionName": REVISION,
+            "workloadProfileName": "Consumption",
             "configuration": {
                 "activeRevisionsMode": "Single",
                 "ingress": {
@@ -33,18 +44,18 @@ def _write_fakes(tmp_path: Path) -> tuple[Path, Path]:
                     "allowInsecure": False,
                     "stickySessions": {"affinity": "sticky"},
                 },
-            },
-            "template": {
-                "scale": {"minReplicas": 0, "maxReplicas": 1},
-                "containers": [
+                "registries": [
                     {
-                        "name": "budget-atlas",
-                        "image": "sacbudgetatlasdemo.azurecr.io/budget-atlas@sha256:" + "a" * 64,
-                        "env": [{"name": "APP_ALLOWED_HOSTS", "value": FQDN}],
+                        "server": "saccitydaoregistry.azurecr.io",
+                        "identity": RUNTIME_IDENTITY,
                     }
                 ],
             },
-        }
+            "template": {
+                "scale": {"minReplicas": 0, "maxReplicas": 1},
+                "containers": [container],
+            },
+        },
     }
     revision = {
         "name": REVISION,
@@ -55,8 +66,9 @@ def _write_fakes(tmp_path: Path) -> tuple[Path, Path]:
             "template": app["properties"]["template"],
         },
     }
-    fixture_path = tmp_path / "fixture.json"
-    fixture_path.write_text(json.dumps({"app": app, "revision": revision}), encoding="utf-8")
+    (tmp_path / "fixture.json").write_text(
+        json.dumps({"app": app, "revision": revision}), encoding="utf-8"
+    )
 
     fake_az = tmp_path / "fake-az.ps1"
     fake_az.write_text(
@@ -87,13 +99,26 @@ exit 64
     fake_web.write_text(
         r"""
 param([string]$Uri)
-if ($Uri -match '^https://') {
-  [pscustomobject]@{ StatusCode = 302; Location = 'https://login.microsoftonline.com/tenant/oauth2/v2.0/authorize' } |
+if ($Uri -match '^http://') {
+  [pscustomobject]@{ StatusCode = 301; Location = $Uri -replace '^http:', 'https:'; Headers = @{}; Body = '' } |
     ConvertTo-Json -Compress
-} else {
-  [pscustomobject]@{ StatusCode = 301; Location = $Uri -replace '^http:', 'https:' } |
-    ConvertTo-Json -Compress
+  exit 0
 }
+if ($Uri -match '/robots.txt$') {
+  [pscustomobject]@{
+    StatusCode = 200
+    Location = ''
+    Headers = @{ 'X-Robots-Tag' = 'noindex, nofollow' }
+    Body = "User-agent: *`nDisallow: /`n"
+  } | ConvertTo-Json -Compress
+  exit 0
+}
+[pscustomobject]@{
+  StatusCode = 200
+  Location = ''
+  Headers = @{ 'X-Robots-Tag' = 'noindex, nofollow' }
+  Body = '<html>Budget Atlas</html>'
+} | ConvertTo-Json -Compress
 """.strip(),
         encoding="utf-8",
     )
@@ -125,7 +150,8 @@ def _run(tmp_path: Path, script: Path, extra: list[str]) -> subprocess.Completed
     )
 
 
-def test_deployment_smoke_test_enforces_runtime_and_browser_evidence(tmp_path: Path) -> None:
+def test_deployment_smoke_test_enforces_public_runtime_and_session_evidence(tmp_path: Path) -> None:
+    """A green smoke test must prove anonymous access without relaxing the runtime boundary."""
     result = _run(
         tmp_path,
         SMOKE_SCRIPT,
@@ -139,8 +165,8 @@ def test_deployment_smoke_test_enforces_runtime_and_browser_evidence(tmp_path: P
     )
 
     assert result.returncode == 0, result.stderr
-    assert "Azure demo deployment smoke test passed" in result.stdout
-    assert "30-minute authenticated browser session" in result.stdout
+    assert "Azure public pilot deployment smoke test passed" in result.stdout
+    assert "30-minute anonymous Shiny WebSocket session" in result.stdout
 
 
 def test_warm_script_reaches_internal_readiness(tmp_path: Path) -> None:

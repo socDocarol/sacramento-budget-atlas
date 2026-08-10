@@ -131,3 +131,32 @@ def test_github_deployment_role_is_scoped_to_the_new_container_app() -> None:
     assert "scope: containerApp" in app
     assert "principalId: githubIdentity.properties.principalId" in app
     assert "githubIdentityName = 'id-sac-budget-atlas-github-public-pilot'" in parameters
+
+
+def test_public_pilot_workflow_builds_scans_and_updates_only_the_pilot_app() -> None:
+    """A wrong workflow target could update a shared sibling app or deploy an unscanned image."""
+    workflow = _read(".github/workflows/deploy-azure-public-pilot.yml")
+
+    assert "environment: azure-public-pilot" in workflow
+    assert "id-token: write" in workflow
+    assert "ACR_NAME: saccitydaoregistry" in workflow
+    assert "ACR_LOGIN_SERVER: saccitydaoregistry.azurecr.io" in workflow
+    assert "resource_group='DBA'" in workflow
+    assert "app_name='ca-sac-budget-atlas-public-pilot'" in workflow
+    assert "az containerapp update" in workflow
+    assert '--image "${{ steps.push.outputs.digest_reference }}"' in workflow
+    assert "anchore/sbom-action@" in workflow
+    assert "aquasecurity/trivy-action@" in workflow
+    assert "azure/login@" in workflow
+    assert "client-secret" not in workflow.lower()
+    assert "publish-profile" not in workflow.lower()
+    assert "saccityapps" not in workflow
+    assert "next311" not in workflow
+
+
+def test_resource_profile_runs_on_the_public_pilot_branch() -> None:
+    """Leaving the old branch selector would silently skip the sizing gate for pilot changes."""
+    workflow = _read(".github/workflows/ci.yml")
+
+    assert "refs/heads/feat/azure-container-apps-public-pilot" in workflow
+    assert "refs/heads/feat/azure-container-apps-demo" not in workflow

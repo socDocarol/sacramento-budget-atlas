@@ -1,10 +1,10 @@
-name: Deploy Azure demo
+name: Deploy Azure public pilot
 
 on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: Update the existing Container App after pushing the immutable image
+        description: Update the existing public-pilot Container App after pushing the immutable image
         required: true
         default: false
         type: boolean
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-azure-demo
+  group: deploy-azure-public-pilot
   cancel-in-progress: false
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
     name: Build, scan, and optionally deploy
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    environment: azure-demo
+    environment: azure-public-pilot
     permissions:
       contents: read
       id-token: write
@@ -71,7 +71,7 @@ jobs:
           image: ${{ steps.image.outputs.local_image }}
           format: spdx-json
           output-file: sbom.spdx.json
-          artifact-name: sacramento-budget-atlas-azure-sbom.spdx.json
+          artifact-name: sacramento-budget-atlas-public-pilot-sbom.spdx.json
 
       - name: Scan the exact image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
@@ -94,8 +94,8 @@ jobs:
         id: push
         shell: bash
         env:
-          ACR_NAME: sacbudgetatlasdemo
-          ACR_LOGIN_SERVER: sacbudgetatlasdemo.azurecr.io
+          ACR_NAME: saccitydaoregistry
+          ACR_LOGIN_SERVER: saccitydaoregistry.azurecr.io
           LOCAL_IMAGE: ${{ steps.image.outputs.local_image }}
           REVISION_SUFFIX: ${{ steps.image.outputs.revision_suffix }}
         run: |
@@ -118,7 +118,7 @@ jobs:
           digest_reference="${ACR_LOGIN_SERVER}/budget-atlas@${digest}"
           echo "digest_reference=${digest_reference}" >>"$GITHUB_OUTPUT"
           {
-            echo '### Azure demo image'
+            echo '### Azure public pilot image'
             echo
             echo "- Source commit: \`${GITHUB_SHA}\`"
             echo "- Revision suffix: \`${REVISION_SUFFIX}\`"
@@ -126,14 +126,14 @@ jobs:
             echo "- Container App update requested: \`${{ inputs.deploy }}\`"
           } >>"$GITHUB_STEP_SUMMARY"
 
-      - name: Require the existing Container App
+      - name: Require the existing public-pilot Container App
         if: ${{ inputs.deploy }}
         shell: bash
         run: |
           set -euo pipefail
           az containerapp show \
-            --name ca-sac-budget-atlas-demo \
-            --resource-group rg-sac-budget-atlas-demo-wus2 \
+            --name ca-sac-budget-atlas-public-pilot \
+            --resource-group DBA \
             --output none
 
       - name: Update only the immutable image and revision suffix
@@ -142,8 +142,8 @@ jobs:
         run: |
           set -euo pipefail
           az containerapp update \
-            --name ca-sac-budget-atlas-demo \
-            --resource-group rg-sac-budget-atlas-demo-wus2 \
+            --name ca-sac-budget-atlas-public-pilot \
+            --resource-group DBA \
             --image "${{ steps.push.outputs.digest_reference }}" \
             --revision-suffix "${{ steps.image.outputs.revision_suffix }}" \
             --output none
@@ -153,8 +153,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          resource_group='rg-sac-budget-atlas-demo-wus2'
-          app_name='ca-sac-budget-atlas-demo'
+          resource_group='DBA'
+          app_name='ca-sac-budget-atlas-public-pilot'
           expected_suffix='${{ steps.image.outputs.revision_suffix }}'
           deadline=$((SECONDS + 600))
 

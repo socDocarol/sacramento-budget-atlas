@@ -1,6 +1,6 @@
 param(
-    [string]$ResourceGroupName = 'rg-sac-budget-atlas-demo-wus2',
-    [string]$ContainerAppName = 'ca-sac-budget-atlas-demo',
+    [string]$ResourceGroupName = 'DBA',
+    [string]$ContainerAppName = 'ca-sac-budget-atlas-public-pilot',
     [ValidateRange(1, 3600)]
     [int]$TimeoutSeconds = 600,
     [string]$AzCommand = 'az',
@@ -78,11 +78,11 @@ while ((Get-Date) -lt $deadline) {
             --command "python -c `"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5).status)`"" 2>&1
         if ($LASTEXITCODE -eq 0 -and ($readyRaw -join "`n") -match '(?m)^\s*200\s*$') {
             $elapsed = [math]::Round(((Get-Date) - $startedAt).TotalSeconds, 1)
-            Write-Output "Azure demo is ready at https://$fqdn/ after $elapsed seconds."
+            Write-Output "Azure public pilot is ready at https://$fqdn/ after $elapsed seconds."
             return
         }
     }
     Start-Sleep -Seconds 10
 }
 
-throw "Azure demo at https://$fqdn/ did not reach internal readiness within $TimeoutSeconds seconds."
+throw "Azure public pilot at https://$fqdn/ did not reach internal readiness within $TimeoutSeconds seconds."
