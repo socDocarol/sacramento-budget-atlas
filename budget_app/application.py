@@ -21,7 +21,7 @@ from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from starlette.responses import JSONResponse, RedirectResponse
+from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from starlette.routing import Mount, Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -90,6 +90,7 @@ class SecurityHeadersMiddleware:
                 headers = MutableHeaders(scope=message)
                 headers.setdefault("x-content-type-options", "nosniff")
                 headers.setdefault("referrer-policy", "no-referrer")
+                headers.setdefault("x-robots-tag", "noindex, nofollow")
                 headers.setdefault("permissions-policy", "camera=(), microphone=(), geolocation=()")
                 headers.setdefault("strict-transport-security", "max-age=31536000; includeSubDomains")
                 headers.setdefault(
@@ -821,6 +822,10 @@ async def _health_ready(_request: Any) -> JSONResponse:
     )
 
 
+async def _robots_txt(_request: Any) -> PlainTextResponse:
+    return PlainTextResponse("User-agent: *\nDisallow: /\n")
+
+
 @asynccontextmanager
 async def _platform_lifespan(_platform: Starlette) -> Any:
     # Starlette does not automatically run the lifespan of a mounted ASGI app.
@@ -843,6 +848,7 @@ async def _platform_lifespan(_platform: Starlette) -> Any:
 _shiny_routes = app.starlette_app
 _base_mount = SETTINGS.app_base_path.rstrip("/") or "/"
 _platform_routes: list[Any] = [
+    Route("/robots.txt", _robots_txt, methods=["GET"]),
     Route("/health/live", _health_live, methods=["GET"]),
     Route("/health/ready", _health_ready, methods=["GET"]),
 ]

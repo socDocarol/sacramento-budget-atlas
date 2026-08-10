@@ -23,6 +23,20 @@ async def test_health_routes_and_security_headers() -> None:
     assert live.headers["referrer-policy"] == "no-referrer"
     assert "frame-ancestors 'none'" in live.headers["content-security-policy"]
     assert live.headers["strict-transport-security"].startswith("max-age=31536000")
+    assert live.headers["x-robots-tag"] == "noindex, nofollow"
+
+
+@pytest.mark.asyncio
+async def test_public_pilot_excludes_cooperative_crawlers() -> None:
+    """Removing either robots control could invite indexing of the temporary public URL."""
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        robots = await client.get("/robots.txt")
+
+    assert robots.status_code == 200
+    assert robots.headers["content-type"].startswith("text/plain")
+    assert robots.headers["x-robots-tag"] == "noindex, nofollow"
+    assert robots.text == "User-agent: *\nDisallow: /\n"
 
 
 @pytest.mark.asyncio
