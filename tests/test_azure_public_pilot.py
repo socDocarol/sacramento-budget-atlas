@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,8 +70,7 @@ def test_public_pilot_parameters_do_not_embed_account_identifiers() -> None:
 
     assert "subscriptionId" not in parameters
     assert "tenantId" not in parameters
-    assert "5307de98-bb54-4d1e-9ccc-d1cafbe8e3e1" not in parameters
-    assert "ba834b27-3286-40b8-a78c-cb233b85bfdb" not in parameters
+    assert re.search(r"\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b", parameters, re.IGNORECASE) is None
     assert "expiresOn: '2026-09-30'" in parameters
 
 
@@ -202,5 +202,4 @@ def test_operator_docs_describe_shared_public_pilot_without_publishing_url() -> 
     )
     for stale_instruction in stale_active_instructions:
         assert stale_instruction not in combined
-    assert "whitesmoke-a6bd011f" not in combined
-    assert "https://ca-sac-budget-atlas-public-pilot." not in combined
+    assert "azurecontainerapps.io" not in combined

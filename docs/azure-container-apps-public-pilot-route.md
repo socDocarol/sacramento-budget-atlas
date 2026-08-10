@@ -2,12 +2,18 @@
 
 ## Status
 
-This document records the deployment route selected on 2026-08-09. It is a handoff for the next working
-session, not evidence of a completed Azure deployment.
+This document records the deployment route selected on 2026-08-09 and the implementation status after the
+first bootstrap session. It is not evidence of a completed Container App deployment.
 
-**No Budget Atlas Azure resources have been deployed.** The current Bicep and deployment workflow still
-implement the earlier hardened design. Do not run them against Azure until the public-pilot changes in this
-document are implemented and verified.
+**The identity bootstrap is deployed, but no Budget Atlas Container App or image is deployed.** The bootstrap
+created the two pilot-owned managed identities, the repository/environment-bound GitHub federated credential,
+and the `AcrPull` and `AcrPush` assignments scoped to `saccitydaoregistry`. Azure validation and what-if showed
+no modifications or deletions to shared resources. Post-deployment inventory still listed only the pre-existing
+`saccityapps` and `next311` Container Apps in `DBA`.
+
+The public-pilot Bicep, workflow, scripts, tests, and runbook now implement the route below. The remaining first
+deployment requires the protected GitHub environment, a workflow-built and scanned immutable image, app
+deployment preview, and the post-deployment acceptance checks.
 
 ## Branch strategy
 

@@ -7,10 +7,11 @@ that connects narrative context, filters, key figures, trends, and supporting
 records.
 
 **Status:** local proof of concept with a reviewed, time-limited Azure public-pilot
-deployment route. No Budget Atlas Azure resources are deployed by the repository
-state alone. This project is not a City-approved public release, official City
-communication, or production deployment. The City data owner and communications
-team have not approved the application, its interpretation, or its visual assets.
+deployment route. The pilot identity bootstrap is deployed, but no Budget Atlas
+Container App or image is deployed. This project is not a City-approved public
+release, official City communication, or production deployment. The City data
+owner and communications team have not approved the application, its
+interpretation, or its visual assets.
 
 ![Sacramento Budget Atlas Overview](docs/images/sacramento-budget-atlas-overview.png)
 
