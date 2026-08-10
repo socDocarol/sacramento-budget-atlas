@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -9,6 +10,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "Test-AzureDemoPrerequisites.ps1"
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 def _powershell() -> str:
@@ -113,6 +115,10 @@ def _run_preflight(tmp_path: Path, fake_az: Path) -> subprocess.CompletedProcess
     )
 
 
+def _terminal_text(value: str) -> str:
+    return " ".join(ANSI_ESCAPE.sub("", value).split())
+
+
 def test_preflight_reports_read_only_prerequisites_without_identifiers(tmp_path: Path) -> None:
     """A regression that echoes account JSON would expose identifiers in operator logs."""
     result = _run_preflight(tmp_path, _write_fake_az(tmp_path))
@@ -146,8 +152,9 @@ def test_preflight_rejects_missing_deployment_permissions(tmp_path: Path) -> Non
     )
 
     assert result.returncode != 0
-    assert "Microsoft.Resources/deployments/validate/action" in result.stderr
-    assert "Request the necessary Azure role" in result.stderr
+    error = _terminal_text(result.stderr)
+    assert "Microsoft.Resources/deployments/validate/action" in error
+    assert "Request the necessary Azure role" in error
 
 
 def test_preflight_rejects_an_unavailable_registry_name(tmp_path: Path) -> None:
@@ -155,5 +162,6 @@ def test_preflight_rejects_an_unavailable_registry_name(tmp_path: Path) -> None:
     result = _run_preflight(tmp_path, _write_fake_az(tmp_path, acr_available=False))
 
     assert result.returncode != 0
-    assert "sacbudgetatlasdemo" in result.stderr
-    assert "no longer available" in result.stderr
+    error = _terminal_text(result.stderr)
+    assert "sacbudgetatlasdemo" in error
+    assert "no longer available" in error
