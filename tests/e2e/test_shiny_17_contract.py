@@ -52,7 +52,7 @@ def overview_has_initial_state(actual: Any) -> bool:
         == {
             "year": 2027,
             "compare_year": 2026,
-            "flow": "all",
+            "flow": "expense",
             "fund_scope": "all_funds",
             "department": None,
             "fund": None,

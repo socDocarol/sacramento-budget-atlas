@@ -125,9 +125,10 @@ def live_server_url() -> Iterator[str]:
 
     port = _free_port()
     url = f"http://127.0.0.1:{port}"
-    shiny = Path(sys.executable).with_name("shiny.exe")
     command = [
-        str(shiny),
+        sys.executable,
+        "-m",
+        "shiny",
         "run",
         "--host",
         "127.0.0.1",
@@ -174,10 +175,11 @@ def live_server_url() -> Iterator[str]:
 def error_server_url(tmp_path: Path) -> Iterator[str]:
     port = _free_port()
     url = f"http://127.0.0.1:{port}"
-    shiny = Path(sys.executable).with_name("shiny.exe")
     process = subprocess.Popen(  # noqa: S603
         [
-            str(shiny),
+            sys.executable,
+            "-m",
+            "shiny",
             "run",
             "--host",
             "127.0.0.1",

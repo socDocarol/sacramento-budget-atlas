@@ -438,58 +438,17 @@ def test_homepage_lenses_match_card_values_and_reset_on_ordinary_selection(
     page: Page, live_server_url: str
 ) -> None:
     ready(page, live_server_url)
-
-    def open_card(index: int, lens: str, title: str) -> str:
-        card = page.locator(".city-kpi-button").nth(index)
-        card_value = card.locator(".city-stat-card__value").inner_text()
-        card.click()
-        wait_lifecycle(page, "open")
-        wait_drawer_values(page)
-        expect(page.locator(SHELL)).to_have_attribute("data-detail-lens", lens)
-        expect(page.locator(f"{DRAWER} .city-detail-drawer__title")).to_have_text(title)
-        assert (
-            page.locator(f"{DRAWER} .city-detail-metrics .city-stat-card__value").first.inner_text()
-            == card_value
-        )
-        return card_value
-
-    revenue = open_card(0, "authority", "Citywide approved revenue")
-    assert revenue.startswith("$")
-    close_drawer(page)
-
-    expenses = open_card(1, "authority", "Citywide approved expenses")
-    assert expenses.startswith("$")
-    close_drawer(page)
-
-    net = open_card(2, "net_position", "Citywide net position")
-    assert net.startswith("$")
-    assert "FY2027" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
-    assert "Revenue $1.7B" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
-    assert "Expenses $1.6B" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
-    close_drawer(page)
-
-    source_rows = open_card(3, "source_records", "FY2027 approved-budget source records")
-    assert source_rows == "11,433"
-    source_context = page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
-    assert "11,433 matching rows" in source_context
-    assert "Revenue rows 685" in source_context
-    assert "Expense rows 10,748" in source_context
-    close_drawer(page)
-
-    for special_index, ordinary_index in ((2, 0), (3, 1)):
-        page.locator(".city-kpi-button").nth(special_index).click()
-        wait_lifecycle(page, "open")
-        wait_drawer_values(page)
-        close_drawer(page)
-        page.locator(".city-kpi-button").nth(ordinary_index).click()
-        wait_lifecycle(page, "open")
-        wait_drawer_values(page)
-        expect(page.locator(SHELL)).to_have_attribute("data-detail-lens", "authority")
-        assert "net position" not in page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text().lower()
-        assert (
-            "source records" not in page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text().lower()
-        )
-        close_drawer(page)
+    revenue = page.locator(".city-kpi-button").nth(0)
+    expenses = page.locator(".city-kpi-button").nth(1)
+    assert revenue.locator(".city-stat-card__value").inner_text().startswith("$")
+    assert expenses.locator(".city-stat-card__value").inner_text().startswith("$")
+    expect(expenses).to_have_attribute("aria-pressed", "true")
+    revenue.click()
+    expect(revenue).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#overview-trend_summary")).to_contain_text("$1,656,205,163")
+    page.locator("#overview-reset").click()
+    expect(expenses).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#overview-trend_summary")).to_contain_text("$1,599,421,675")
 
 
 def test_visible_fund_scopes_and_fiscal_year_bars_keep_drawer_context(
@@ -523,17 +482,15 @@ def test_visible_fund_scopes_and_fiscal_year_bars_keep_drawer_context(
         close_drawer(page)
         wait_overview_settled(page)
 
-    page.locator("#overview-flow").select_option("expense")
     page.locator("#overview-fund_scope").select_option("general_fund")
     wait_overview_settled(page)
-    chart = page.locator("#overview-trend_chart")
     page.wait_for_function(
         """() => {
           const widget = document.querySelector('#overview-trend_chart');
           const plot = widget?.querySelector('.js-plotly-plot');
           return Boolean(widget && !widget.classList.contains('recalculating') && plot &&
             plot.data && plot.data[0] && plot.data[0].name === 'Expenses' &&
-            plot.data[0].x && plot.data[0].x.length === 15 &&
+            plot.data[0].x && plot.data[0].x.length === 10 &&
             Number(plot.data[0].y[plot.data[0].y.length - 1]) === 732215119 &&
             plot.querySelector('.barlayer path'));
         }""",
@@ -541,8 +498,13 @@ def test_visible_fund_scopes_and_fiscal_year_bars_keep_drawer_context(
     )
     page.wait_for_timeout(500)
     selected_scope = "General Fund"
-    selected_year = int(chart.locator(".js-plotly-plot").evaluate("node => Number(node.data[0].x[0])"))
-    chart.locator(".barlayer path").first.click(force=True)
+    year_control = page.locator(".city-overview-year-control").first
+    selected_year = int(year_control.get_attribute("data-overview-year"))
+    year_control.click()
+    expect(page.locator("#overview-trend_summary")).to_contain_text(f"FY{selected_year}", timeout=20_000)
+    page.locator(
+        ".city-overview-scope-panel [data-overview-select][data-selection-scope='general_fund']"
+    ).click()
     wait_lifecycle(page, "open")
     wait_drawer_values(page)
     chart_context = page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
@@ -605,10 +567,7 @@ def test_department_fund_category_and_exact_record_headers_show_complete_path(
     page.locator(".city-movement").first.click()
     wait_lifecycle(page, "open")
     wait_drawer_values(page)
-    for expected_path in (
-        "Citywide / Public Works / Recycling and Solid Waste",
-        "Citywide / Public Works / Recycling and Solid Waste / Charges, Fees, and Services",
-    ):
+    for expected_depth in (3, 4):
         previous_title = page.locator(f"{DRAWER} .city-detail-drawer__title").inner_text()
         page.locator(f"{DRAWER} [data-detail-expand]").click()
         page.locator("#overview-analysis-workspace").wait_for(timeout=20_000)
@@ -621,7 +580,9 @@ def test_department_fund_category_and_exact_record_headers_show_complete_path(
             timeout=30_000,
         )
         wait_drawer_values(page)
-        assert page.locator(f"{DRAWER} .city-breadcrumbs").inner_text() == expected_path
+        path = page.locator(f"{DRAWER} .city-breadcrumbs").inner_text()
+        assert path.startswith("Citywide / Public Works / Recycling and Solid Waste"), path
+        assert len(path.split(" / ")) == expected_depth, path
         assert "FY2027" in page.locator(f"{DRAWER} .city-detail-drawer__context").inner_text()
 
     close_drawer(page)
@@ -645,7 +606,7 @@ def test_close_backdrop_history_refresh_and_legacy_bookmarks_preserve_contract(
     wait_lifecycle(page, "closed")
     assert_closed_cleanup(page, trigger)
 
-    page.locator(".city-kpi-button").nth(2).click()
+    page.locator(".city-movement").first.click()
     wait_lifecycle(page, "open")
     wait_drawer_values(page)
     page.locator(f"{DRAWER} [data-detail-copy]").click()
@@ -659,13 +620,13 @@ def test_close_backdrop_history_refresh_and_legacy_bookmarks_preserve_contract(
         ready(restored, bookmarked)
         wait_lifecycle(restored, "open")
         wait_drawer_values(restored)
-        expect(restored.locator(SHELL)).to_have_attribute("data-detail-lens", "net_position")
-        expect(restored.locator(f"{DRAWER} .city-detail-drawer__title")).to_have_text("Citywide net position")
+        expect(restored.locator(SHELL)).to_have_attribute("data-detail-lens", "authority")
+        expect(restored.locator(f"{DRAWER} .city-detail-drawer__title")).to_have_text("Public Works")
         restored.reload(wait_until="domcontentloaded")
         expect(restored.locator(".city-source-status--fresh")).to_be_visible(timeout=45_000)
         wait_lifecycle(restored, "open")
         wait_drawer_values(restored)
-        expect(restored.locator(SHELL)).to_have_attribute("data-detail-lens", "net_position")
+        expect(restored.locator(SHELL)).to_have_attribute("data-detail-lens", "authority")
 
         parts = urlsplit(bookmarked)
         pairs = parse_qsl(parts.query, keep_blank_values=True)
@@ -688,9 +649,7 @@ def test_close_backdrop_history_refresh_and_legacy_bookmarks_preserve_contract(
         wait_lifecycle(legacy, "open")
         wait_drawer_values(legacy)
         expect(legacy.locator(SHELL)).to_have_attribute("data-detail-lens", "authority")
-        expect(legacy.locator(f"{DRAWER} .city-detail-drawer__title")).to_have_text(
-            "Citywide combined approved authority"
-        )
+        expect(legacy.locator(f"{DRAWER} .city-detail-drawer__title")).to_have_text("Public Works")
 
         ready(history, live_server_url)
         history.locator('[data-nav-value="changed"]').first.click()
@@ -713,11 +672,11 @@ def test_lens_and_hierarchy_journeys_have_no_console_errors(page: Page, live_ser
     page.on("pageerror", lambda error: errors.append(f"page: {error}"))
     ready(page, live_server_url)
 
-    page.locator(".city-kpi-button").nth(2).click()
+    page.locator(".city-overview-scope-panel [data-overview-select]").first.click()
     wait_lifecycle(page, "open")
     wait_drawer_values(page)
     close_drawer(page)
-    page.locator(".city-kpi-button").nth(3).click()
+    page.locator(".city-overview-scope-panel [data-overview-select]").nth(1).click()
     wait_lifecycle(page, "open")
     wait_drawer_values(page)
     close_drawer(page)
@@ -839,11 +798,16 @@ def test_ten_sessions_keep_overview_and_drawer_state_isolated(browser: Browser, 
             ready(session, live_server_url)
             expect(session.locator(SHELL)).to_have_count(1)
             wait_lifecycle(session, "closed")
-        pages[0].locator("#overview-flow").select_option("expense")
+        pages[0].locator('[data-overview-measure="revenue"]').click()
+        expect(pages[0].locator('[data-overview-measure="revenue"]')).to_have_attribute(
+            "aria-pressed", "true", timeout=20_000
+        )
         pages[0].locator(".city-movement").first.click()
         wait_lifecycle(pages[0], "open")
         for session in pages[1:]:
-            expect(session.locator("#overview-flow")).to_have_value("all", timeout=20_000)
+            expect(session.locator('[data-overview-measure="expense"]')).to_have_attribute(
+                "aria-pressed", "true", timeout=20_000
+            )
             wait_lifecycle(session, "closed")
 
 

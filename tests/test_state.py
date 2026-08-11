@@ -140,3 +140,28 @@ def test_presentation_lens_is_bounded_and_legacy_bookmarks_default_to_authority(
     presentation = sanitize_overview_presentation({"lens": raw_lens})
 
     assert presentation.lens == expected
+
+
+def test_default_overview_selection_prefers_fy2027_and_expense() -> None:
+    selection = sanitize_overview_selection({}, years=(2024, 2025, 2026, 2027))
+
+    assert selection.year == 2027
+    assert selection.compare_year == 2026
+    assert selection.flow == "expense"
+    assert selection.fund_scope == "all_funds"
+
+
+def test_overview_selection_always_compares_selected_year_to_previous_fiscal_year() -> None:
+    selection = sanitize_overview_selection(
+        {"year": 2025, "compare_year": 2027},
+        years=(2023, 2025, 2027),
+    )
+
+    assert selection.year == 2025
+    assert selection.compare_year == 2024
+
+
+def test_legacy_all_flow_is_normalized_to_expense() -> None:
+    selection = sanitize_overview_selection({"flow": "all"}, years=(2027,))
+
+    assert selection.flow == "expense"

@@ -24,10 +24,15 @@ from ..components import (
 from ..shell import page_intro, page_section
 
 FLOW_LABELS = {
-    "all": "Revenue and expenses",
-    "revenue": "Revenue",
     "expense": "Expenses",
+    "revenue": "Revenue",
 }
+
+
+def _selected_flow(value: Any) -> str:
+    """Keep legacy combined-flow bookmarks on the expense-only default."""
+
+    return "revenue" if str(value) == "revenue" else "expense"
 
 
 @module.ui
@@ -36,7 +41,7 @@ def what_changed_ui(id: str = "changed") -> Any:
         page_intro(
             "What changed between years?",
             "Compare the same approved-budget scope across two fiscal years, rank the "
-            "largest department movements, and inspect exact values before drawing conclusions.",
+            "largest department changes, and inspect exact values before drawing conclusions.",
             eyebrow_text="Year-over-year comparison",
         ),
         ui.div(
@@ -65,7 +70,7 @@ def what_changed_ui(id: str = "changed") -> Any:
         ui.output_ui("state"),
         ui.div(
             chart_frame(
-                "Largest department movements",
+                "Largest department changes",
                 output_widget("chart", height="460px"),
                 ui.output_text("chart_summary"),
             ),
@@ -87,7 +92,7 @@ def what_changed_ui(id: str = "changed") -> Any:
                     ui.tags.li("Above zero means the approved amount increased."),
                     ui.tags.li("Below zero means the approved amount decreased."),
                     ui.tags.li(
-                        "A movement does not explain cause, service impact, performance, or actual spending."
+                        "A change does not explain cause, service impact, performance, or actual spending."
                     ),
                     class_="city-check-list",
                 ),
@@ -154,6 +159,11 @@ def what_changed_server(
         )
 
     @reactive.effect
+    def _normalize_legacy_flow() -> None:
+        if str(input.flow()) not in FLOW_LABELS:
+            ui.update_select("flow", selected="expense")
+
+    @reactive.effect
     @reactive.event(input.reset)
     def _reset() -> None:
         values = available_years()
@@ -161,7 +171,7 @@ def what_changed_server(
             return
         ui.update_select("current_year", selected=values[0])
         ui.update_select("prior_year", selected=values[1] if len(values) > 1 else values[0])
-        ui.update_select("flow", selected="all")
+        ui.update_select("flow", selected="expense")
 
     @reactive.calc
     def comparison() -> pd.DataFrame:
@@ -170,10 +180,9 @@ def what_changed_server(
         prior = selected_year("prior_year", 1)
         if value.empty or current is None or prior is None:
             return pd.DataFrame()
-        selected_flow = str(input.flow() or "all")
-        if selected_flow in {"revenue", "expense"}:
-            expected = "Revenues" if selected_flow == "revenue" else "Expenses"
-            value = value.loc[value["expense_revenue"].eq(expected)]
+        selected_flow = _selected_flow(input.flow())
+        expected = "Revenues" if selected_flow == "revenue" else "Expenses"
+        value = value.loc[value["expense_revenue"].eq(expected)]
         current_rows = (
             value.loc[value["fiscal_year"].eq(current)].groupby("department", dropna=False)["amount"].sum()
         )
@@ -196,7 +205,7 @@ def what_changed_server(
             {
                 "year": selected_year("current_year", 0),
                 "compare_year": selected_year("prior_year", 1),
-                "flow": str(input.flow() or "all"),
+                "flow": _selected_flow(input.flow()),
                 "fund_scope": "all_funds",
                 "department": department,
             }
@@ -208,7 +217,7 @@ def what_changed_server(
         return ui.div(
             ui.span("Comparison question", class_="city-filter-chips__label"),
             ui.span(f"What changed from FY{prior} to FY{current}?", class_="city-filter-chip"),
-            ui.span(FLOW_LABELS.get(str(input.flow()), FLOW_LABELS["all"]), class_="city-filter-chip"),
+            ui.span(FLOW_LABELS[_selected_flow(input.flow())], class_="city-filter-chip"),
             class_="city-filter-chips",
             aria_live="polite",
         )
@@ -235,7 +244,7 @@ def what_changed_server(
                 tone="sky",
             ),
             stat_card(
-                "Net movement",
+                "Net change",
                 format_currency(change, compact=True),
                 format_percent(percent) if percent is not None else "Percentage unavailable",
                 tone="green" if change >= 0 else "gold",
@@ -311,10 +320,10 @@ def what_changed_server(
     def chart_summary() -> str:
         value = comparison()
         if value.empty:
-            return "Choose two fiscal years with records to see department movements."
+            return "Choose two fiscal years with records to see department changes."
         largest = value.iloc[0]
         return (
-            f"Largest absolute movement: {largest['department']}, "
+            f"Largest absolute change: {largest['department']}, "
             f"{format_currency(largest['change'])}. Select a bar for exact detail."
         )
 
