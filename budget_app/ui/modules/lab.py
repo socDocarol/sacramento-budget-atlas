@@ -334,7 +334,7 @@ def lab_server(
                             "Review" if row.reason else "No flag",
                             class_="city-status-badge",
                         ),
-                    ui.span(f"{row.entity}: {format_currency(row.change)} latest change"),
+                        ui.span(f"{row.entity}: {format_currency(row.change)} latest change"),
                     ),
                     ui.div(
                         ui.p(
