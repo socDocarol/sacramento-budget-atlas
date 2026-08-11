@@ -75,9 +75,7 @@ def test_measure_summary_scope_changes_every_contextual_value() -> None:
 
 
 def test_measure_summary_uses_exact_prior_year_and_preserves_missing_prior() -> None:
-    summary = build_overview_measure_summary(
-        mixed_rows(), year=2026, flow="expense", fund_scope="all_funds"
-    )
+    summary = build_overview_measure_summary(mixed_rows(), year=2026, flow="expense", fund_scope="all_funds")
 
     assert summary.year == 2026
     assert summary.prior_year == 2025

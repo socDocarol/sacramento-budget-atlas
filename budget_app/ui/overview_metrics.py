@@ -43,9 +43,7 @@ def build_overview_measure_summary(
     prior_amount = float(prior["amount"].sum()) if not prior.empty else None
     change_amount = current_amount - prior_amount if prior_amount is not None else None
     change_percent = (
-        change_amount / prior_amount * 100
-        if change_amount is not None and prior_amount != 0
-        else None
+        change_amount / prior_amount * 100 if change_amount is not None and prior_amount != 0 else None
     )
     departments = (
         active.groupby("department", as_index=False)["amount"]
