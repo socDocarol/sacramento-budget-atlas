@@ -4,6 +4,7 @@ import math
 
 from budget_app.ui.components import format_currency, format_percent, stat_card
 from budget_app.ui.modules.overview import format_overview_currency, overview_ui
+from budget_app.ui.modules.what_changed import FLOW_LABELS, what_changed_ui
 
 
 def test_formatters_do_not_expose_nonfinite_values() -> None:
@@ -46,6 +47,13 @@ def test_overview_opening_uses_the_simplified_analytical_context() -> None:
     assert "Approved budget trend, last 10 fiscal years" in markup
     assert "Largest movements" not in markup
     assert "No department movements" not in markup
+
+
+def test_what_changed_never_offers_a_combined_budget_total() -> None:
+    markup = str(what_changed_ui("changed"))
+
+    assert FLOW_LABELS == {"expense": "Expenses", "revenue": "Revenue"}
+    assert "Revenue and expenses" not in markup
 
 
 def test_overview_context_controls_share_one_header_bar() -> None:
