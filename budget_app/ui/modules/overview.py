@@ -174,7 +174,7 @@ def overview_ui(id: str = "overview") -> Any:
         ui.div(
             chart_frame(
                 "Approved budget trend, last 10 fiscal years",
-                output_widget("trend_chart", height="310px"),
+                output_widget("trend_chart", height="350px"),
                 ui.div(
                     ui.output_text("trend_summary"),
                     ui.tags.details(
@@ -857,7 +857,7 @@ def overview_server(
         )
         figure.update_layout(
             margin=dict(l=56, r=12, t=30, b=10),
-            height=310,
+            height=350,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(family="Inter, sans-serif", color="#0f172a"),

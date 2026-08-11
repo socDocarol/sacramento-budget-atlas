@@ -51,6 +51,7 @@
     },
     overviewYearFocus: null,
     overviewChartObserver: null,
+    overviewChartResizeObserver: null,
     overviewMeasureFocus: null,
     overviewKpiObserver: null,
     detail: {
@@ -469,6 +470,18 @@
     group.querySelectorAll(".city-overview-year-control").forEach(function (button) {
       if (!retained[button.getAttribute("data-overview-year")]) button.remove();
     });
+    var plotArea = plot.querySelector(".nsewdrag");
+    if (plotArea && window.innerWidth > 600) {
+      var rootBox = root.getBoundingClientRect();
+      var plotBox = plotArea.getBoundingClientRect();
+      group.style.marginLeft = Math.max(0, plotBox.left - rootBox.left) + "px";
+      group.style.width = plotBox.width + "px";
+      group.style.gridTemplateColumns = "repeat(" + years.length + ", minmax(0, 1fr))";
+    } else {
+      group.style.removeProperty("margin-left");
+      group.style.removeProperty("width");
+      group.style.removeProperty("grid-template-columns");
+    }
     if (state.overviewYearFocus) {
       var focusYear = state.overviewYearFocus.year;
       var focusTarget = group.querySelector(
@@ -494,6 +507,12 @@
       });
     });
     state.overviewChartObserver.observe(root, { childList: true, subtree: true });
+    if ("ResizeObserver" in window && !state.overviewChartResizeObserver) {
+      state.overviewChartResizeObserver = new ResizeObserver(function () {
+        window.requestAnimationFrame(renderOverviewYearControls);
+      });
+      state.overviewChartResizeObserver.observe(root);
+    }
   }
 
   function rememberIntegratedDetailTrigger(event) {

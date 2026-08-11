@@ -291,6 +291,40 @@ def test_overview_measure_and_year_controls_update_context_without_opening_detai
     assert console_errors == []
 
 
+def test_overview_compact_kpis_and_year_labels_align_with_bars(page: Page, live_server_url: str) -> None:
+    page.set_viewport_size({"width": 1024, "height": 768})
+    ready(page, live_server_url)
+    expect(page.locator(".city-overview-year-control")).to_have_count(10, timeout=20_000)
+
+    geometry = page.evaluate(
+        """() => {
+          const center = node => {
+            const box = node.getBoundingClientRect();
+            return box.left + box.width / 2;
+          };
+          const bars = [...document.querySelectorAll('#overview-trend_chart .points .point')];
+          const years = [...document.querySelectorAll('.city-overview-year-control')];
+          const cards = [...document.querySelectorAll('#overview-kpis .city-stat-card')];
+          const fontSize = selector => parseFloat(getComputedStyle(document.querySelector(selector)).fontSize);
+          return {
+            offsets: bars.map((bar, index) => Math.abs(center(bar) - center(years[index]))),
+            cardHeights: cards.map(card => card.getBoundingClientRect().height),
+            chartHeight: document.querySelector('#overview-trend_chart').getBoundingClientRect().height,
+            contextFonts: [
+              fontSize('.city-story-studio__live-year'),
+              fontSize('.city-story-studio__live-meaning'),
+              fontSize('.city-story-studio__live-control label'),
+              fontSize('#overview-fund_scope')
+            ]
+          };
+        }"""
+    )
+    assert max(geometry["offsets"]) <= 2, geometry
+    assert max(geometry["cardHeights"]) <= 125, geometry
+    assert geometry["chartHeight"] >= 340, geometry
+    assert max(geometry["contextFonts"]) - min(geometry["contextFonts"]) <= 0.5, geometry
+
+
 def test_explorer_reset_returns_all_filters(page: Page, live_server_url: str) -> None:
     ready(page, live_server_url)
     page.locator('[data-nav-value="explorer"]').first.click()
