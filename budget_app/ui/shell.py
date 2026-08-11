@@ -7,7 +7,7 @@ from typing import Any
 
 from shiny import ui
 
-ASSET_VERSION = "20260811-overview-density"
+ASSET_VERSION = "20260811-overview-density-2"
 
 CITY_SOURCE_URL = (
     "https://services5.arcgis.com/54falWtcpty3V47Z/arcgis/rest/services/"

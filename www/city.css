@@ -1175,15 +1175,15 @@ body:has(.city-story-studio) .city-story-studio__anchor-strip {
 .city-story-studio__live-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: .65rem 1rem;
   min-width: 0;
 }
 .city-story-studio__live-eyebrow { color: var(--city-cobalt); font: 700 .75rem/1.2 var(--font-heading); letter-spacing: .14em; text-transform: uppercase; }
 .city-story-studio__live-meta { display: inline-flex; flex-wrap: wrap; align-items: baseline; justify-content: start; gap: .45rem; min-width: 0; padding-top: .05rem; }
-.city-story-studio__live-year { color: var(--city-cobalt); font-size: .9rem; font-weight: 800; }
-.city-story-studio__live-meaning { color: var(--city-muted); font-size: .9rem; font-weight: 500; }
+.city-story-studio__live-year { color: var(--city-cobalt); font-size: 1.1rem; font-weight: 800; }
+.city-story-studio__live-meaning { color: var(--city-muted); font-size: 1.1rem; font-weight: 500; }
 .city-story-studio__analysis-slot { display: grid; align-content: start; gap: .75rem; min-width: 0; padding-top: .75rem; }
 .city-story-studio__live-controls {
   display: grid;
@@ -1358,20 +1358,23 @@ body:has(.city-story-studio) :is(.city-stat-card, .city-detail-metrics, .city-de
   gap: .8rem;
 }
 .city-story-studio__live-kpis .city-stat-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   min-height: 7.4rem;
-  padding: .7rem .85rem;
+  padding: .65rem 1.15rem;
 }
 .city-story-studio__live-kpis .city-stat-card__label {
-  font-size: .78rem;
+  font-size: .82rem;
   font-weight: 800;
 }
 .city-story-studio__live-kpis .city-stat-card__value {
-  font-size: clamp(1.8rem, 2.4vw, 2.35rem);
+  font-size: clamp(1.95rem, 2.5vw, 2.45rem);
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 .city-story-studio__live-kpis .city-stat-card__detail {
-  font-size: .78rem;
+  font-size: .82rem;
 }
 .city-story-studio__live-kpis [data-overview-measure] {
   position: relative;
@@ -1381,13 +1384,8 @@ body:has(.city-story-studio) :is(.city-stat-card, .city-detail-metrics, .city-de
   text-align: left;
 }
 .city-story-studio__live-kpis [data-overview-measure]::after {
-  display: block;
-  width: .7rem;
-  height: .7rem;
-  margin-top: .5rem;
-  border: 2px solid currentColor;
-  border-radius: 50%;
-  content: "";
+  display: none;
+  content: none;
 }
 .city-story-studio__live-kpis [data-overview-measure][aria-pressed="true"] {
   border-color: var(--city-cobalt);
@@ -1432,9 +1430,10 @@ body:has(.city-story-studio) :is(.city-stat-card, .city-detail-metrics, .city-de
   margin-top: .55rem;
 }
 .city-overview-year-control {
-  width: calc(100% - .4rem);
+  width: 82%;
   min-width: 0;
-  margin-inline: .2rem;
+  justify-self: center;
+  margin-inline: 0;
   padding: .3rem .45rem;
   border: 1px solid var(--city-line);
   border-radius: 3px;
@@ -1925,16 +1924,16 @@ body:has(.city-story-studio) .city-overview-scope-panel .city-stat-card__value {
   }
   body:has(.city-story-studio) .city-story-studio__live-kpis .city-stat-card {
     min-height: 7.1rem;
-    padding: .6rem .75rem;
+    padding: .6rem 1.15rem;
   }
   body:has(.city-story-studio) .city-story-studio__live-kpis .city-stat-card__label {
-    font-size: .78rem;
+    font-size: .82rem;
   }
   body:has(.city-story-studio) .city-story-studio__live-kpis .city-stat-card__value {
-    font-size: 1.9rem;
+    font-size: 2rem;
   }
   body:has(.city-story-studio) .city-story-studio__live-kpis .city-stat-card__detail {
-    font-size: .78rem;
+    font-size: .82rem;
   }
   body:has(.city-story-studio) .city-story-studio__live-chart .city-chart-frame {
     padding-top: 0;

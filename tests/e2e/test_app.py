@@ -306,23 +306,60 @@ def test_overview_compact_kpis_and_year_labels_align_with_bars(page: Page, live_
           const years = [...document.querySelectorAll('.city-overview-year-control')];
           const cards = [...document.querySelectorAll('#overview-kpis .city-stat-card')];
           const fontSize = selector => parseFloat(getComputedStyle(document.querySelector(selector)).fontSize);
+          const verticalCenter = node => {
+            const box = node.getBoundingClientRect();
+            return box.top + box.height / 2;
+          };
           return {
             offsets: bars.map((bar, index) => Math.abs(center(bar) - center(years[index]))),
+            widthOffsets: bars.map((bar, index) => {
+              const path = bar.querySelector('path').getBoundingClientRect();
+              return Math.abs(path.width - years[index].getBoundingClientRect().width);
+            }),
             cardHeights: cards.map(card => card.getBoundingClientRect().height),
+            cardTextOffsets: cards.map(card => {
+              const parts = [...card.querySelectorAll('.city-stat-card__label, .city-stat-card__value, .city-stat-card__detail')];
+              const top = Math.min(...parts.map(part => part.getBoundingClientRect().top));
+              const bottom = Math.max(...parts.map(part => part.getBoundingClientRect().bottom));
+              return Math.abs(verticalCenter(card) - (top + bottom) / 2);
+            }),
+            cardPaddingLeft: parseFloat(getComputedStyle(cards[0]).paddingLeft),
+            radioDisplay: getComputedStyle(document.querySelector('[data-overview-measure]'), '::after').display,
+            kpiFonts: [
+              fontSize('#overview-kpis .city-stat-card__label'),
+              fontSize('#overview-kpis .city-stat-card__value'),
+              fontSize('#overview-kpis .city-stat-card__detail')
+            ],
             chartHeight: document.querySelector('#overview-trend_chart').getBoundingClientRect().height,
-            contextFonts: [
+            contextTitleFonts: [
               fontSize('.city-story-studio__live-year'),
-              fontSize('.city-story-studio__live-meaning'),
+              fontSize('.city-story-studio__live-meaning')
+            ],
+            fundFonts: [
               fontSize('.city-story-studio__live-control label'),
               fontSize('#overview-fund_scope')
-            ]
+            ],
+            contextCenterOffset: Math.abs(
+              verticalCenter(document.querySelector('.city-story-studio__live-meta')) -
+              verticalCenter(document.querySelector('.city-story-studio__live-controls'))
+            )
           };
         }"""
     )
     assert max(geometry["offsets"]) <= 2, geometry
+    assert max(geometry["widthOffsets"]) <= 1, geometry
     assert max(geometry["cardHeights"]) <= 125, geometry
+    assert max(geometry["cardTextOffsets"]) <= 1, geometry
+    assert geometry["cardPaddingLeft"] >= 18, geometry
+    assert geometry["radioDisplay"] == "none", geometry
+    assert geometry["kpiFonts"][0] >= 13, geometry
+    assert geometry["kpiFonts"][1] >= 31, geometry
+    assert geometry["kpiFonts"][2] >= 13, geometry
     assert geometry["chartHeight"] >= 340, geometry
-    assert max(geometry["contextFonts"]) - min(geometry["contextFonts"]) <= 0.5, geometry
+    assert min(geometry["contextTitleFonts"]) >= 17.5, geometry
+    assert max(geometry["contextTitleFonts"]) - min(geometry["contextTitleFonts"]) <= 0.5, geometry
+    assert max(geometry["fundFonts"]) - min(geometry["fundFonts"]) <= 0.5, geometry
+    assert geometry["contextCenterOffset"] <= 1, geometry
 
 
 def test_explorer_reset_returns_all_filters(page: Page, live_server_url: str) -> None:

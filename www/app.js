@@ -471,16 +471,23 @@
       if (!retained[button.getAttribute("data-overview-year")]) button.remove();
     });
     var plotArea = plot.querySelector(".nsewdrag");
+    var barPaths = plot.querySelectorAll(".points .point path");
     if (plotArea && window.innerWidth > 600) {
       var rootBox = root.getBoundingClientRect();
       var plotBox = plotArea.getBoundingClientRect();
       group.style.marginLeft = Math.max(0, plotBox.left - rootBox.left) + "px";
       group.style.width = plotBox.width + "px";
       group.style.gridTemplateColumns = "repeat(" + years.length + ", minmax(0, 1fr))";
+      group.querySelectorAll(".city-overview-year-control").forEach(function (button, index) {
+        if (barPaths[index]) button.style.width = barPaths[index].getBoundingClientRect().width + "px";
+      });
     } else {
       group.style.removeProperty("margin-left");
       group.style.removeProperty("width");
       group.style.removeProperty("grid-template-columns");
+      group.querySelectorAll(".city-overview-year-control").forEach(function (button) {
+        button.style.removeProperty("width");
+      });
     }
     if (state.overviewYearFocus) {
       var focusYear = state.overviewYearFocus.year;

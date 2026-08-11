@@ -331,8 +331,8 @@ def _application_ui(_request: Any) -> Any:
         ui.tags.meta(name="robots", content="noindex, nofollow"),
         ui.tags.meta(name="viewport", content="width=device-width, initial-scale=1"),
         ui.tags.link(rel="icon", href="assets/COStreatmentBLUE.png"),
-        ui.tags.link(rel="stylesheet", href="city.css?v=20260811-overview-density"),
-        ui.tags.script(src="app.js?v=20260811-overview-density", defer=True),
+        ui.tags.link(rel="stylesheet", href="city.css?v=20260811-overview-density-2"),
+        ui.tags.script(src="app.js?v=20260811-overview-density-2", defer=True),
         ui.div(
             city_header_ui(nav_input_id="app_view", app_home=SETTINGS.app_base_path),
             ui.tags.main(
