@@ -34,6 +34,7 @@ def story_studio_ui(
     benchmark_value: Any | None = None,
     source_rows: str = "29,387",
     analysis_slot: Any | None = None,
+    context_controls: Any | None = None,
 ) -> Any:
     """Build the visible opening section that precedes the live overview.
 
@@ -45,6 +46,7 @@ def story_studio_ui(
         "The prepared budget snapshot will appear here when the live analysis is ready.",
         class_="city-story-studio__live-empty",
     )
+    controls_slot = context_controls or ui.div()
     return ui.tags.section(
         ui.div(
             ui.div(
@@ -92,16 +94,19 @@ def story_studio_ui(
             ),
             ui.div(
                 ui.div(
-                    ui.div("Citywide context", class_="city-story-studio__live-eyebrow"),
                     ui.div(
                         ui.div(
                             ui.output_text("context_year"),
                             class_="city-story-studio__live-year",
                         ),
-                        ui.span("Approved budget context", class_="city-story-studio__live-meaning"),
+                        ui.span(
+                            "Approved Budget Context",
+                            class_="city-story-studio__live-meaning",
+                        ),
                         class_="city-story-studio__live-meta",
                     ),
-                    class_="city-story-studio__live-head",
+                    controls_slot,
+                    class_="city-story-studio__live-head city-story-studio__live-actions",
                 ),
                 live_slot,
                 class_="city-story-studio__live",

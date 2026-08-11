@@ -9,6 +9,7 @@ from typing import Any
 
 import pandas as pd
 import plotly.graph_objects as go
+from htmltools import Tag
 from shiny import module, reactive, render, ui
 from shiny.testmode import export_test_values
 from shinywidgets import output_widget, render_widget
@@ -137,31 +138,43 @@ def _exact_table(
 
 @module.ui
 def overview_ui(id: str = "overview") -> Any:
-    analysis_slot = ui.div(
+    context_controls = ui.div(
         ui.div(
-            ui.div(
-                ui.input_select(
-                    "fund_scope",
-                    "Fund scope",
-                    {"all_funds": "All funds total"},
-                ),
-                class_="city-story-studio__live-control",
+            ui.input_select(
+                "fund_scope",
+                "Fund scope",
+                {"all_funds": "All funds total"},
             ),
-            ui.input_action_button(
-                "reset",
-                ui.span("↺", aria_hidden="true"),
-                class_="city-button city-button--secondary city-story-studio__live-reset",
-                aria_label="Reset to FY2027 expenses and all funds",
-                title="Reset to FY2027 expenses and all funds",
-            ),
-            class_="city-controls city-context-bar city-story-studio__live-controls",
-            aria_label="Overview filters",
+            class_="city-story-studio__live-control",
         ),
+        ui.input_action_button(
+            "reset",
+            ui.tags.svg(
+                Tag("path", d="M20 11a8 8 0 1 0-2.34 5.66"),
+                Tag("path", d="M20 4v7h-7"),
+                viewBox="0 0 24 24",
+                fill="none",
+                stroke="currentColor",
+                stroke_width="2",
+                stroke_linecap="round",
+                stroke_linejoin="round",
+                focusable="false",
+                aria_hidden="true",
+                class_="city-story-studio__reset-icon",
+            ),
+            class_="city-button city-button--secondary city-story-studio__live-reset",
+            aria_label="Reset to FY2027 expenses and all funds",
+            title="Reset to FY2027 expenses and all funds",
+        ),
+        class_="city-story-studio__live-controls",
+        aria_label="Overview filters",
+    )
+    analysis_slot = ui.div(
         ui.div(ui.output_ui("kpis"), class_="city-overview-kpis city-story-studio__live-kpis"),
         ui.div(
             chart_frame(
-                "Budget change by fiscal year",
-                output_widget("trend_chart", height="232px"),
+                "Approved budget trend, last 10 fiscal years",
+                output_widget("trend_chart", height="310px"),
                 ui.div(
                     ui.output_text("trend_summary"),
                     ui.tags.details(
@@ -180,6 +193,7 @@ def overview_ui(id: str = "overview") -> Any:
         story_studio_ui(
             analysis_slot=analysis_slot,
             benchmark_value=ui.output_text("benchmark_value"),
+            context_controls=context_controls,
         ),
         ui.div(
             ui.div(
@@ -658,7 +672,8 @@ def overview_server(
         largest_detail = (
             f"{format_currency(selected.largest_department_amount)} · "
             f"{selected.largest_department_share:.1%} of FY{selected.year} {selected.measure.lower()}"
-            if selected.largest_department_amount is not None and selected.largest_department_share is not None
+            if selected.largest_department_amount is not None
+            and selected.largest_department_share is not None
             else "No department amount is available"
         )
         return ui.div(
@@ -794,11 +809,13 @@ def overview_server(
             totals = totals.loc[totals["fund_scope"].eq(scope)]
             if flow_value != "all":
                 totals = totals.loc[totals["expense_revenue"].eq(flow_value)]
-            return totals.groupby("fiscal_year", as_index=False)["amount"].sum().sort_values("fiscal_year")
-        data = _state_rows(frame(), current, year=None, include_hierarchy=False)
-        if data.empty:
-            return pd.DataFrame(columns=["fiscal_year", "amount"])
-        return data.groupby("fiscal_year", as_index=False)["amount"].sum().sort_values("fiscal_year")
+            history = totals.groupby("fiscal_year", as_index=False)["amount"].sum()
+        else:
+            data = _state_rows(frame(), current, year=None, include_hierarchy=False)
+            if data.empty:
+                return pd.DataFrame(columns=["fiscal_year", "amount"])
+            history = data.groupby("fiscal_year", as_index=False)["amount"].sum()
+        return history.sort_values("fiscal_year").tail(10).reset_index(drop=True)
 
     def trend_chart() -> Any:
         data = trend_data()
@@ -829,13 +846,23 @@ def overview_server(
             _sync_context_value(year=selected_year)
 
         figure.data[0].on_click(_open_year)
+        figure.add_hline(
+            y=float(data["amount"].mean()),
+            line_color="#60758a",
+            line_dash="dot",
+            line_width=1,
+            annotation_text=f"{len(data)}-year average",
+            annotation_position="top left",
+            annotation_font={"color": "#53667a", "size": 10},
+        )
         figure.update_layout(
-            margin=dict(l=18, r=12, t=12, b=42),
-            height=330,
+            margin=dict(l=56, r=12, t=30, b=10),
+            height=310,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(family="Inter, sans-serif", color="#0f172a"),
-            xaxis=dict(title=None, fixedrange=True),
+            bargap=0.18,
+            xaxis=dict(title=None, fixedrange=True, showticklabels=False),
             yaxis=dict(
                 title=None,
                 tickprefix="$",
@@ -843,6 +870,7 @@ def overview_server(
                 gridcolor="#e2e6ed",
                 zeroline=False,
                 fixedrange=True,
+                automargin=True,
             ),
             showlegend=False,
         )

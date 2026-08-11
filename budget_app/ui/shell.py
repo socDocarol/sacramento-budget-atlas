@@ -7,6 +7,8 @@ from typing import Any
 
 from shiny import ui
 
+ASSET_VERSION = "20260811-release-audit"
+
 CITY_SOURCE_URL = (
     "https://services5.arcgis.com/54falWtcpty3V47Z/arcgis/rest/services/"
     "City_of_Sacramento_Approved_Budgets/FeatureServer/0"
@@ -34,8 +36,8 @@ def city_head_ui() -> Any:
     return ui.tags.head(
         ui.tags.meta(name="robots", content="noindex, nofollow"),
         ui.tags.meta(name="description", content="Internal Sacramento approved budget data story."),
-        ui.tags.link(rel="stylesheet", href="city.css"),
-        ui.tags.script(src="app.js"),
+        ui.tags.link(rel="stylesheet", href=f"city.css?v={ASSET_VERSION}"),
+        ui.tags.script(src=f"app.js?v={ASSET_VERSION}"),
     )
 
 

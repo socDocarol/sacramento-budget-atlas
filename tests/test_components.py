@@ -43,6 +43,20 @@ def test_overview_opening_uses_the_simplified_analytical_context() -> None:
     assert 'id="overview-context_year"' in markup
     assert 'id="overview-kpis"' in markup
     assert 'id="overview-trend_chart"' in markup
-    assert "Budget change by fiscal year" in markup
+    assert "Approved budget trend, last 10 fiscal years" in markup
     assert "Largest movements" not in markup
     assert "No department movements" not in markup
+
+
+def test_overview_context_controls_share_one_header_bar() -> None:
+    """Catch a detached fund-scope panel or a broken text-glyph reset control."""
+
+    markup = str(overview_ui("overview"))
+
+    assert "Citywide context" not in markup
+    assert "Approved Budget Context" in markup
+    assert "city-story-studio__live-actions" in markup
+    assert markup.index('id="overview-context_year"') < markup.index('id="overview-fund_scope"')
+    assert markup.index('id="overview-fund_scope"') < markup.index('id="overview-reset"')
+    assert 'class="city-story-studio__reset-icon"' in markup
+    assert "↺" not in markup

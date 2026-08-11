@@ -5,7 +5,7 @@ import re
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Locator, Page, expect
 
 pytestmark = pytest.mark.e2e
 
@@ -17,6 +17,41 @@ def ready(page: Page, url: str) -> None:
 
 def assert_no_horizontal_overflow(page: Page) -> None:
     assert page.evaluate("document.documentElement.scrollWidth === document.documentElement.clientWidth")
+
+
+def contrast_ratio(locator: Locator) -> float:
+    return float(
+        locator.evaluate(
+            """node => {
+              const parse = value => value.match(/[\\d.]+/g).slice(0, 3).map(Number);
+              const luminance = rgb => {
+                const channels = rgb.map(value => {
+                  const channel = value / 255;
+                  return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+                });
+                return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+              };
+              const style = getComputedStyle(node);
+              const foreground = luminance(parse(style.color));
+              let surface = node.parentElement;
+              while (surface) {
+                const parts = getComputedStyle(surface).backgroundColor.match(/[\\d.]+/g) || [];
+                const alpha = parts.length < 4 ? 1 : Number(parts[3]);
+                if (alpha > 0) break;
+                surface = surface.parentElement;
+              }
+              const background = luminance(parse(getComputedStyle(surface || document.body).backgroundColor));
+              return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+            }"""
+        )
+    )
+
+
+def test_overview_small_text_meets_aa_contrast(page: Page, live_server_url: str) -> None:
+    ready(page, live_server_url)
+
+    assert contrast_ratio(page.locator(".city-nav__link.is-active")) >= 4.5
+    assert contrast_ratio(page.locator("#overview-kpis .city-stat-card__detail").first) >= 4.5
 
 
 def test_navigation_shell_history_and_responsive_width(page: Page, live_server_url: str) -> None:
@@ -537,6 +572,28 @@ def test_mobile_menu_keyboard_skip_link_and_width(page: Page, live_server_url: s
     ready(page, live_server_url)
     expect(page.locator(".city-nav")).to_be_hidden()
     assert_no_horizontal_overflow(page)
+
+    year_buttons = page.locator(".city-overview-year-control")
+    expect(year_buttons).to_have_count(10)
+    assert all(
+        (box := year_buttons.nth(index).bounding_box()) is not None and box["height"] >= 44
+        for index in range(year_buttons.count())
+    )
+    for selector in ("#overview-fund_scope", "#overview-reset"):
+        box = page.locator(selector).bounding_box()
+        assert box is not None and box["height"] >= 44
+    expect(page.locator("#overview-trend_chart .modebar")).to_be_hidden()
+
+    page.set_viewport_size({"width": 800, "height": 1000})
+    assert_no_horizontal_overflow(page)
+    assert all(
+        (box := year_buttons.nth(index).bounding_box()) is not None and box["height"] >= 44
+        for index in range(year_buttons.count())
+    )
+    for selector in ("#overview-fund_scope", "#overview-reset"):
+        box = page.locator(selector).bounding_box()
+        assert box is not None and box["height"] >= 44
+    expect(page.locator("#overview-trend_chart .modebar")).to_be_hidden()
     page.locator(".city-mobile-nav__summary").click()
     expect(page.locator(".city-mobile-nav")).to_be_visible()
     page.locator('.city-mobile-nav__link[data-nav-value="methods"]').click()
