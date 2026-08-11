@@ -484,7 +484,6 @@ def test_visible_fund_scopes_and_fiscal_year_bars_keep_drawer_context(
 
     page.locator("#overview-fund_scope").select_option("general_fund")
     wait_overview_settled(page)
-    chart = page.locator("#overview-trend_chart")
     page.wait_for_function(
         """() => {
           const widget = document.querySelector('#overview-trend_chart');
