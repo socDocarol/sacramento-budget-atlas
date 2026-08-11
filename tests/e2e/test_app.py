@@ -362,6 +362,34 @@ def test_overview_compact_kpis_and_year_labels_align_with_bars(page: Page, live_
     assert geometry["contextCenterOffset"] <= 1, geometry
 
 
+def test_overview_exact_data_keeps_editorial_image_size(page: Page, live_server_url: str) -> None:
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    ready(page, live_server_url)
+    details = page.locator(".city-story-studio__live-chart details")
+    image = page.locator(".city-story-studio__hero-image")
+    closed_height = image.evaluate("node => node.getBoundingClientRect().height")
+    spacing = page.evaluate(
+        """() => {
+          const years = document.querySelector('.city-overview-year-controls').getBoundingClientRect();
+          const summary = document.querySelector('#overview-trend_summary').getBoundingClientRect();
+          const details = document.querySelector('.city-story-studio__live-chart details').getBoundingClientRect();
+          return {
+            yearsToSummary: summary.top - years.bottom,
+            summaryToDetails: details.top - summary.bottom,
+            closedDetailsHeight: details.height
+          };
+        }"""
+    )
+    assert spacing["yearsToSummary"] >= 8, spacing
+    assert spacing["summaryToDetails"] >= 8, spacing
+    assert spacing["closedDetailsHeight"] <= 48, spacing
+
+    details.locator("summary").click()
+    expect(details).to_have_attribute("open", "", timeout=20_000)
+    open_height = image.evaluate("node => node.getBoundingClientRect().height")
+    assert abs(open_height - closed_height) <= 1, (closed_height, open_height)
+
+
 def test_explorer_reset_returns_all_filters(page: Page, live_server_url: str) -> None:
     ready(page, live_server_url)
     page.locator('[data-nav-value="explorer"]').first.click()

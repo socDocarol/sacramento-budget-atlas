@@ -1226,6 +1226,21 @@ body:has(.city-story-studio) .city-story-studio__anchor-strip {
 .city-story-studio__live-chart .city-chart-source { margin-top: .3rem; font-size: .6rem; }
 .city-story-studio__live-chart .city-chart-summary { margin-top: .3rem; font-size: .72rem; }
 .city-story-studio__live-chart .city-progressive { margin-top: .35rem; }
+.city-story-studio__chart-meta {
+  display: grid;
+  gap: .6rem;
+  padding-top: .65rem;
+}
+.city-story-studio__chart-meta .city-chart-summary,
+.city-story-studio__chart-meta .city-progressive {
+  margin-top: 0;
+}
+.city-story-studio__chart-meta .city-progressive { min-height: 0; }
+.city-story-studio__chart-meta .city-progressive > summary {
+  display: list-item;
+  min-height: 2.5rem;
+  padding-block: .55rem;
+}
 .city-story-studio__live-empty { padding: 1.5rem; color: var(--city-muted); }
 .city-story-studio__pathway { min-width: 0; padding: .75rem .9rem; border-top: 1px solid var(--city-line); border-bottom: 1px solid var(--city-line); }
 .city-story-studio__path-eyebrow { color: var(--city-cobalt); font: 700 .68rem/1.2 var(--font-heading); letter-spacing: .12em; text-transform: uppercase; }
@@ -1946,17 +1961,17 @@ body:has(.city-story-studio) .city-overview-scope-panel .city-stat-card__value {
 /* Align the editorial image and support row with the live chart column. */
 @media (min-width: 1101px) {
   body:has(.city-story-studio) .city-story-studio__narrative {
-    grid-template-rows: auto auto auto auto minmax(0, 1fr);
-    align-content: stretch;
+    grid-template-rows: auto;
+    align-content: start;
   }
   body:has(.city-story-studio) .city-story-studio__hero-figure {
     display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
-    align-self: stretch;
+    grid-template-rows: auto auto;
+    align-self: start;
     min-height: 0;
   }
   body:has(.city-story-studio) .city-story-studio__hero-image {
-    height: 100%;
+    height: clamp(19rem, 28.5vw, 25.65rem);
     min-height: 0;
     aspect-ratio: auto;
   }

@@ -182,6 +182,7 @@ def overview_ui(id: str = "overview") -> Any:
                         ui.output_ui("trend_exact"),
                         class_="city-progressive",
                     ),
+                    class_="city-story-studio__chart-meta",
                 ),
                 source="Source: City of Sacramento Approved Budgets",
             ),
